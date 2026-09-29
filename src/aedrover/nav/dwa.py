@@ -52,6 +52,7 @@ class DWAController:
         self._still = 0
         if self.curb is not None:
             self.curb.reset()
+            self.curb.set_vehicle(env.veh0)
 
     def act(self, obs: dict) -> tuple[float, float]:
         if self._k % self.replan_every == 0:

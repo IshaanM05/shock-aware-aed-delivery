@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .scenario import PedSpec, SIDEWALK_HALF_WIDTH
+from .scenario import SIDEWALK_HALF_WIDTH, PedSpec
 
 PED_R = 0.22
 ROBOT_R = 0.50            # bounding radius used by pedestrian repulsion

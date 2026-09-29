@@ -25,8 +25,19 @@ WHEELS = ("fl", "fr", "rl", "rr")
 G = 9.81
 
 
+def wheel_mass_for(radius: float, peak_torque: float) -> float:
+    """Wheel + hub-motor mass model used by the co-design: tyre/rim mass scales with radius squared
+    and each extra N m of peak torque adds 0.04 kg of motor (ASSUMPTION, engineering estimate).
+    Equals the nominal 1.65 kg at r = 0.15 m, 25 N m."""
+    return 1.65 * (radius / 0.15) ** 2 + 0.04 * (peak_torque - 25.0)
+
+
+_CONFIG_DIR = Path(__file__).resolve().parents[3] / "configs"
+
+
 @dataclass(frozen=True)
 class VehicleParams:
+    name: str = "nominal"
     # --- chassis / payload -------------------------------------------------
     chassis_half: tuple[float, float, float] = (0.42, 0.24, 0.07)
     chassis_mass: float = 22.0            # kg, sprung
@@ -116,6 +127,22 @@ class VehicleParams:
             if isinstance(v, list):
                 raw[k] = tuple(v)
         return cls(**raw)
+
+    @classmethod
+    def nominal(cls) -> VehicleParams:
+        """The draft design (v1): 0.15 m wheels, 4500 N/m suspension, 25 N m motors."""
+        return cls()
+
+    @classmethod
+    def optimized(cls) -> VehicleParams:
+        """The co-designed vehicle (v2) from experiments/06_mech_codesign.py."""
+        raw = yaml.safe_load((_CONFIG_DIR / "vehicle_optimized.yaml").read_text(encoding="utf-8"))
+        return cls(name="optimized", wheel_mass=wheel_mass_for(raw["wheel_radius"], raw["motor_peak_torque"]),
+                   **raw)
+
+    @classmethod
+    def by_name(cls, name: str) -> VehicleParams:
+        return {"nominal": cls.nominal, "optimized": cls.optimized}[name]()
 
 
 def _f(x: float) -> str:

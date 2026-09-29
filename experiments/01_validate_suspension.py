@@ -11,7 +11,13 @@ import argparse
 import json
 from pathlib import Path
 
-from aedrover.sim.validate import ringdown, rolling_slip, stability_soak, static_equilibrium, tyre_stiffness
+from aedrover.sim.validate import (
+    ringdown,
+    rolling_slip,
+    stability_soak,
+    static_equilibrium,
+    tyre_stiffness,
+)
 from aedrover.sim.vehicle_mjcf import VehicleParams
 
 ROOT = Path(__file__).resolve().parents[1]

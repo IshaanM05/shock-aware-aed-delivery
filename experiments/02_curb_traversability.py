@@ -19,6 +19,7 @@ import pandas as pd
 
 from aedrover.parallel import default_workers, pmap
 from aedrover.sim.curb_study import KerbTrial, run_kerb_trial
+from aedrover.sim.vehicle_mjcf import VehicleParams
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,12 +34,18 @@ PRESETS = {
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--preset", choices=PRESETS, default="standard")
+    ap.add_argument("--design", choices=("nominal", "optimized"), default="nominal")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--budget-g", type=float, default=3.0)
     args = ap.parse_args()
-    g = PRESETS[args.preset]
+    g = dict(PRESETS[args.preset])
+    veh = VehicleParams.by_name(args.design)
+    if args.design == "optimized":
+        g["r"] = (veh.wheel_radius,)            # the design fixes the wheel radius
+    design = dict(susp_k=veh.susp_k, susp_c=veh.susp_c, iso_kz=veh.iso_kz, iso_cz=veh.iso_cz,
+                  motor_peak_torque=veh.motor_peak_torque)
 
-    trials = [KerbTrial(direction=d, kerb_h=h, speed=v, angle_deg=a, wheel_radius=r, mu=mu)
+    trials = [KerbTrial(direction=d, kerb_h=h, speed=v, angle_deg=a, wheel_radius=r, mu=mu, **design)
               for d, h, v, a, r, mu in itertools.product(("up", "down"), g["h"], g["v"], g["ang"], g["r"], g["mu"])]
     print(f"{len(trials)} trials on {args.workers or default_workers()} workers")
     t0 = time.perf_counter()
@@ -48,7 +55,7 @@ def main() -> None:
     df = pd.DataFrame(rows)
     out = ROOT / "results"
     out.mkdir(exist_ok=True)
-    df.to_csv(out / f"curb_traversability_{args.preset}.csv", index=False)
+    df.to_csv(out / f"curb_traversability_{args.design}_{args.preset}.csv", index=False)
 
     # climb window per (direction, kerb_h, wheel_radius, mu) at zero approach angle
     win = []
@@ -62,10 +69,11 @@ def main() -> None:
         win.append({"direction": d, "kerb_h": h, "wheel_radius": r, "mu": mu,
                     "v_min_success": v_min, "v_max_within_budget": v_shock_max,
                     "feasible_window": bool(v_min is not None and v_shock_max is not None and v_shock_max >= v_min)})
-    (out / f"curb_window_{args.preset}.json").write_text(json.dumps(win, indent=2), encoding="utf-8")
+    (out / f"curb_window_{args.design}_{args.preset}.json").write_text(json.dumps(win, indent=2), encoding="utf-8")
 
-    up = df[(df.direction == "up") & (df.angle_deg == 0.0) & (df.mu == 1.0) & (df.wheel_radius == 0.15)]
-    print("\nkerb-up, r=0.15, mu=1.0, straight: success% / peak g (rows: kerb height, cols: speed)")
+    r0 = g["r"][min(1, len(g["r"]) - 1)]
+    up = df[(df.direction == "up") & (df.angle_deg == 0.0) & (df.mu == 1.0) & (df.wheel_radius == r0)]
+    print(f"\nkerb-up, {args.design}, r={r0}, mu=1.0, straight: success% / peak g (rows: kerb height, cols: speed)")
     print(up.pivot_table(index="kerb_h", columns="speed", values="success", aggfunc="mean").round(2).to_string())
     print(up.pivot_table(index="kerb_h", columns="speed", values="peak_g", aggfunc="mean").round(2).to_string())
     feas = pd.DataFrame(win)

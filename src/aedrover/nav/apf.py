@@ -27,6 +27,7 @@ class APFController:
     def reset(self, env) -> None:
         if self.curb is not None:
             self.curb.reset()
+            self.curb.set_vehicle(env.veh0)
 
     def _force(self, obs: dict) -> np.ndarray:
         yaw = obs["yaw"]

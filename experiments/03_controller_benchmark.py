@@ -19,6 +19,7 @@ import pandas as pd
 from aedrover.analysis.experiments import make_jobs, run_job
 from aedrover.parallel import default_workers, pmap
 from aedrover.sim.scenario import FAMILIES
+from aedrover.sim.vehicle_mjcf import VehicleParams
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -45,16 +46,19 @@ def main() -> None:
     ap.add_argument("--controllers", nargs="+", default=["pure_pursuit", "apf_nocurb", "apf"])
     ap.add_argument("--families", nargs="+", default=list(FAMILIES))
     ap.add_argument("--no-shield", action="store_true")
+    ap.add_argument("--vehicle", choices=("nominal", "optimized"), default="optimized")
     ap.add_argument("--workers", type=int, default=None)
     args = ap.parse_args()
 
     jobs = make_jobs(args.controllers, args.families, range(args.seed0, args.seed0 + args.n),
-                     shield=not args.no_shield, tag=args.tag)
+                     shield=not args.no_shield, tag=args.tag,
+                     env_kwargs=(("veh", VehicleParams.by_name(args.vehicle)),))
     print(f"{len(jobs)} episodes on {args.workers or default_workers()} workers")
     t0 = time.perf_counter()
     rows = pmap(run_job, jobs, workers=args.workers, chunksize=4, desc="bench")
     wall = time.perf_counter() - t0
     df = pd.DataFrame(rows)
+    df["vehicle"] = args.vehicle
     sim_s = df.time_s.sum()
     print(f"done in {wall:.0f}s wall; {sim_s:.0f}s simulated ({sim_s / wall:.0f}x real time)")
     (ROOT / "results").mkdir(exist_ok=True)

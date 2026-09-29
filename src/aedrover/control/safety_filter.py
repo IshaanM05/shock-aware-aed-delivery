@@ -72,7 +72,9 @@ class SafetyFilter:
         ly = -s * dx + c * dy
         inside = (lx > -half_l) & (lx < half_l) & (np.abs(ly) < half_w)
         hit = inside.any(axis=1)
-        return float(self._sigma[np.argmax(hit)]) if hit.any() else np.inf
+        # the arc is sampled every ``ds``: the true first overlap lies in (sigma - ds, sigma], so
+        # subtracting one step keeps the estimate conservative
+        return float(self._sigma[np.argmax(hit)]) - self.p.ds if hit.any() else np.inf
 
     def v_limit(self, obs: dict, delta: float) -> float:
         p = self.p

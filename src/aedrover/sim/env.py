@@ -48,12 +48,14 @@ class AEDRoverEnv(gym.Env):
                  max_time: float = 90.0, budget_g: float = 3.0, v_max: float = 3.5,
                  delta_max: float = 0.5, perception: PerceptionSpec | None = None,
                  sfm: SFMParams | None = None, reward: RewardConfig | None = None,
-                 obs_mode: str = "vector", render_size: tuple[int, int] = (480, 640)):
+                 obs_mode: str = "vector", render_size: tuple[int, int] = (480, 640),
+                 log_every: int = 2, ped_every: int = 1):
         super().__init__()
         self.family = family
         self.veh0 = veh or VehicleParams()
         self.world = World(self.veh0, world_spec)
-        self.rover = Rover(self.world, control_dt=control_dt)
+        self.rover = Rover(self.world, control_dt=control_dt, log_every=log_every)
+        self.ped_every = ped_every
         self.perc = Perception(self.world.model, self.world.data, self.world.b_chassis,
                                self.veh0.nominal_height, perception)
         self.crowd = PedestrianCrowd(sfm)
@@ -86,7 +88,8 @@ class AEDRoverEnv(gym.Env):
         sc: Scenario = options.get("scenario") or sample_scenario(
             options.get("family", self.family),
             int(seed if seed is not None else self.np_random.integers(2**31 - 1)),
-            n_ped_max=self.world.spec.n_ped, n_obs_max=self.world.spec.n_obstacle)
+            n_ped_max=self.world.spec.n_ped, n_obs_max=self.world.spec.n_obstacle,
+            **options.get("scenario_kwargs", {}))
         self.scenario = sc
         self._configure_world(sc)
         self.rover.reset(0.0, sc.start_y, sc.surface_z(0.0), yaw=sc.start_yaw, settle_s=0.4)
@@ -110,18 +113,7 @@ class AEDRoverEnv(gym.Env):
         return self._obs_out(), {"scenario": sc.to_dict()}
 
     def _configure_world(self, sc: Scenario) -> None:
-        w = self.world
-        w.clear_all()
-        if sc.has_kerb:
-            w.set_crossing(sc.kerb_h, sc.x_down, sc.x_up, ramp_down=sc.ramp_down, ramp_up=sc.ramp_up)
-        else:
-            w.set_flat()
-        w.set_tyre_friction(sc.tyre_mu)
-        w.set_ground_friction(sc.ground_mu)
-        if abs(w.model.body_mass[w.b_payload] - sc.payload_mass) > 1e-9:
-            w.set_payload_mass(sc.payload_mass)
-        for ob in sc.obstacles:
-            w.set_obstacle(ob.slot, ob.x, ob.y, ob.z_surface)
+        self.world.apply_scenario(sc)
 
     def _sync_peds(self) -> None:
         for i in range(self.crowd.n):
@@ -129,7 +121,7 @@ class AEDRoverEnv(gym.Env):
             self.world.place_pedestrian(i, x, y, self.crowd.z_surface[i])
 
     # ------------------------------------------------------------------- step
-    def step(self, action):
+    def step(self, action, want_obs: bool = True):
         a = np.asarray(action, dtype=float)
         v_cmd = float(np.clip(a[0], 0.0, self.v_max))
         d_cmd = float(np.clip(a[1], -self.delta_max, self.delta_max))
@@ -141,10 +133,11 @@ class AEDRoverEnv(gym.Env):
         self._steps += 1
 
         xy = rv.pos[:2]
-        self.crowd.step(self.dt, xy, rv.body_velocity()[:2])
-        for i in range(self.crowd.n):
-            p = self.crowd.pos[i]
-            self.world.move_pedestrian(i, p[0], p[1], self.crowd.z_surface[i])
+        if self._steps % self.ped_every == 0:
+            self.crowd.step(self.dt * self.ped_every, xy, rv.body_velocity()[:2])
+            for i in range(self.crowd.n):
+                p = self.crowd.pos[i]
+                self.world.move_pedestrian(i, p[0], p[1], self.crowd.z_surface[i])
 
         # per-step metrics
         new = np.asarray(rv.acc_log[n_log0:])
@@ -167,11 +160,12 @@ class AEDRoverEnv(gym.Env):
         truncated = outcome in ("timeout", "stall")
         reward = self._reward(rv.pos[0] - x0, step_g, clear, a, outcome)
         self._last_action[:] = (v_cmd, d_cmd)
-        self._update_obs()
+        if want_obs or terminated or truncated:
+            self._update_obs()
         info = {"shock_g": step_g, "clearance": clear, "outcome": outcome or ""}
         if terminated or truncated:
             info["episode"] = self.episode_metrics(outcome or "timeout")
-        return self._obs_out(), reward, terminated, truncated, info
+        return (self._obs_out() if (want_obs or terminated or truncated) else None), reward, terminated, truncated, info
 
     # ----------------------------------------------------------- bookkeeping
     def _clearance(self) -> float:

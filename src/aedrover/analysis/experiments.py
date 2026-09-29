@@ -24,6 +24,7 @@ class Job:
     controller_kwargs: tuple = ()          # tuple of (key, value) pairs (hashable)
     safety_kwargs: tuple = ()
     env_kwargs: tuple = ()
+    scenario_kwargs: tuple = ()            # e.g. (('kerb_range', (0.15, 0.19)),) for out-of-distribution runs
     tag: str = ""
 
 
@@ -42,7 +43,7 @@ def run_job(job: Job) -> dict:
     ctrl = _controller(job.controller, job.controller_kwargs)
     shield = SafetyFilter(SafetyParams(**dict(job.safety_kwargs))) if job.shield else None
     t0 = time.perf_counter()
-    ep = dict(run_episode(env, ctrl, shield, seed=job.seed, options={"family": job.family}))
+    ep = dict(run_episode(env, ctrl, shield, seed=job.seed, options={"family": job.family, "scenario_kwargs": dict(job.scenario_kwargs)}))
     ep.pop("trajectory", None)
     ep.update(controller=job.controller, family=job.family, seed=job.seed, shield=job.shield,
               tag=job.tag, wall_s=time.perf_counter() - t0,

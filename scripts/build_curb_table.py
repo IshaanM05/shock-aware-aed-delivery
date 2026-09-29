@@ -16,9 +16,9 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main() -> None:
-    df = pd.read_csv(ROOT / "results" / "curb_traversability_standard.csv")
-    out: dict = {"source": "results/curb_traversability_standard.csv", "up": {}, "down": {}}
+def build(design: str) -> dict:
+    df = pd.read_csv(ROOT / "results" / f"curb_traversability_{design}_standard.csv")
+    out: dict = {"source": f"results/curb_traversability_{design}_standard.csv", "up": {}, "down": {}}
     up = df[(df.direction == "up") & (df.angle_deg == 0.0)]
     for r, gr in up.groupby("wheel_radius"):
         heights = sorted(gr.kerb_h.unique())
@@ -40,9 +40,14 @@ def main() -> None:
         piv = gr.pivot_table(index="kerb_h", columns="speed", values="peak_g", aggfunc="mean")
         out["down"][f"{r:.3f}"] = {"heights": piv.index.tolist(), "speeds": piv.columns.tolist(),
                                    "peak_g": piv.values.round(3).tolist()}
+    return out
+
+
+def main() -> None:
+    tables = {d: build(d) for d in ("nominal", "optimized") if (ROOT / "results" / f"curb_traversability_{d}_standard.csv").exists()}
     path = ROOT / "configs" / "curb_table.json"
-    path.write_text(json.dumps(out, indent=1), encoding="utf-8")
-    print("wrote", path.relative_to(ROOT))
+    path.write_text(json.dumps(tables, indent=1), encoding="utf-8")
+    print("wrote", path.relative_to(ROOT), "designs:", list(tables))
 
 
 if __name__ == "__main__":

@@ -7,12 +7,13 @@ Ackermann geometry; the speed loops run inside MuJoCo (velocity actuators, torqu
 
 from __future__ import annotations
 
+import math
 from math import atan, copysign, hypot, tan
 
 import mujoco
 import numpy as np
 
-from .vehicle_mjcf import G, WHEELS
+from .vehicle_mjcf import WHEELS
 from .world import World
 
 _TQ = mujoco.mjtObj
@@ -55,6 +56,7 @@ class Rover:
         # wheel positions relative to the rear-axle centre: (x, y) for fl, fr, rl, rr
         self._wx = np.array([L, L, 0.0, 0.0])
         self._wy = np.array([W / 2, -W / 2, W / 2, -W / 2])
+        self._att_t, self._att = -1.0, (0.0, 0.0, 0.0)
         self.acc_log: list[np.ndarray] = []    # payload proper acceleration, payload frame [m/s^2]
         self.gdir_log: list[np.ndarray] = []   # world-up direction in the chassis frame (R row 2)
         self.t_log: list[float] = []
@@ -77,6 +79,7 @@ class Rover:
             d.ctrl[self.a_drive] = speed / p.wheel_radius
         self.w.apply_mocap()
         mujoco.mj_forward(self.m, d)
+        self._att_t = -1.0
         self.clear_logs()
         if settle_s > 0.0:
             mujoco.mj_step(self.m, d, nstep=int(settle_s / self.dt_phys))
@@ -141,11 +144,16 @@ class Rover:
         return self.d.xquat[self.w.b_chassis]
 
     def yaw_pitch_roll(self) -> tuple[float, float, float]:
+        """Yaw, pitch, roll [rad]; cached per simulation time (called several times per step)."""
+        t = self.d.time
+        if t == self._att_t:
+            return self._att
         w, x, y, z = self.d.xquat[self.w.b_chassis]
-        yaw = np.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
-        pitch = np.arcsin(np.clip(2 * (w * y - z * x), -1.0, 1.0))
-        roll = np.arctan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
-        return float(yaw), float(pitch), float(roll)
+        yaw = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+        pitch = math.asin(max(-1.0, min(1.0, 2 * (w * y - z * x))))
+        roll = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
+        self._att_t, self._att = t, (yaw, pitch, roll)
+        return self._att
 
     def body_velocity(self) -> np.ndarray:
         """Linear velocity of the chassis in its own frame (vx forward, vy left, vz up)."""

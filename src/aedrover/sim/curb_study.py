@@ -13,7 +13,7 @@ import numpy as np
 
 from .metrics import rover_shock
 from .rover import Rover
-from .vehicle_mjcf import VehicleParams
+from .vehicle_mjcf import VehicleParams, wheel_mass_for
 from .world import World
 
 
@@ -34,14 +34,15 @@ class KerbTrial:
     payload_mass: float = 4.0
 
 
-@functools.lru_cache(maxsize=32)
+@functools.lru_cache(maxsize=3)
 def _world_for(veh: VehicleParams) -> World:
     return World(veh)
 
 
 def run_kerb_trial(t: KerbTrial, x_kerb: float = 7.0) -> dict:
     veh = VehicleParams(wheel_radius=t.wheel_radius, susp_c=t.susp_c, susp_k=t.susp_k,
-                        iso_kz=t.iso_kz, iso_cz=t.iso_cz, motor_peak_torque=t.motor_peak_torque)
+                        iso_kz=t.iso_kz, iso_cz=t.iso_cz, motor_peak_torque=t.motor_peak_torque,
+                        wheel_mass=wheel_mass_for(t.wheel_radius, t.motor_peak_torque))
     w = _world_for(veh)
     w.clear_all()
     if t.payload_mass != w.model.body_mass[w.b_payload]:

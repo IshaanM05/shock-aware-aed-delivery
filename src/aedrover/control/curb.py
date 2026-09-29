@@ -38,8 +38,10 @@ class CurbTable:
     v_max_table: float = 3.0
 
     @classmethod
-    def load(cls, path: str | Path = _DEFAULT_TABLE, wheel_radius: float = 0.15) -> CurbTable:
-        raw = json.loads(Path(path).read_text(encoding="utf-8"))["up"]
+    def load(cls, path: str | Path = _DEFAULT_TABLE, wheel_radius: float = 0.15,
+             design: str = "nominal") -> CurbTable:
+        tables = json.loads(Path(path).read_text(encoding="utf-8"))
+        raw = tables[design if design in tables else "nominal"]["up"]
         key = min(raw, key=lambda k: abs(float(k) - wheel_radius))
         t = raw[key]
         return cls(np.array(t["heights"]), np.array(t["mus"]), _fill(t["v_min"], 3.0),
@@ -83,6 +85,10 @@ class CurbNegotiator:
 
     def reset(self) -> None:
         self.state = KerbState()
+
+    def set_vehicle(self, veh) -> None:
+        """Load the lookup table measured for this vehicle design."""
+        self.table = CurbTable.load(design=veh.name, wheel_radius=veh.wheel_radius)
 
     def observe(self, obs: dict) -> KerbState:
         """Update the kerb estimate from the forward terrain scan (rows = forward distance)."""

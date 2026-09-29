@@ -22,8 +22,8 @@ def analytic_quarter_car(ms: float, mu: float, ks: float, cs: float, kt: float) 
     M = np.diag([ms, mu])
     K = np.array([[ks, -ks], [-ks, ks + kt]])
     C = np.array([[cs, -cs], [-cs, cs]])
-    Z, I = np.zeros((2, 2)), np.eye(2)
-    A = np.block([[Z, I], [-np.linalg.solve(M, K), -np.linalg.solve(M, C)]])
+    Z, eye = np.zeros((2, 2)), np.eye(2)
+    A = np.block([[Z, eye], [-np.linalg.solve(M, K), -np.linalg.solve(M, C)]])
     eig = np.linalg.eigvals(A)
     body = eig[np.imag(eig) > 0]
     if len(body) == 0:  # both modes overdamped
@@ -57,7 +57,7 @@ def static_equilibrium(veh: VehicleParams) -> dict:
 def tyre_stiffness(veh: VehicleParams) -> dict:
     """Effective radial tyre stiffness from static penetration under the measured wheel load."""
     r = _flat_rover(veh)
-    m, d, w = r.m, r.d, r.w
+    d, w = r.d, r.w
     pen = np.zeros(4)
     for c in d.contact[: d.ncon]:
         for k, g in enumerate(w.g_tyre):

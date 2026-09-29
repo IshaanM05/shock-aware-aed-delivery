@@ -1,0 +1,7 @@
+# Output of experiments/06_mech_codesign.py (differential evolution, see results/codesign.json)
+wheel_radius: 0.2188
+susp_k: 2656.7097
+susp_c: 151.6028
+iso_kz: 720.4571
+iso_cz: 50.2095
+motor_peak_torque: 30.9639

@@ -75,8 +75,9 @@ def _mocap_box(name: str, gname: str, half: tuple, material: str, friction: floa
     )
 
 
-def build_xml(veh: VehicleParams, spec: WorldSpec = WorldSpec(), *, start_x: float = 0.0,
+def build_xml(veh: VehicleParams, spec: WorldSpec | None = None, *, start_x: float = 0.0,
               start_y: float = 0.0, start_h: float = 0.0, start_yaw: float = 0.0) -> str:
+    spec = spec or WorldSpec()
     hw = spec.walk_halfwidth
     half_slab = (spec.slab_len / 2, hw, 0.5)
     half_ramp = (spec.ramp_len / 2, hw, 0.02)
@@ -106,7 +107,7 @@ def build_xml(veh: VehicleParams, spec: WorldSpec = WorldSpec(), *, start_x: flo
   <compiler angle="radian" autolimits="true"/>
   <option timestep="{spec.timestep}" integrator="implicitfast" gravity="0 0 -9.81" cone="pyramidal"
           iterations="30" ls_iterations="12" noslip_iterations="0"/>
-  <size memory="64M"/>
+  <size memory="8M"/>
   <!-- znear/zfar are in units of the model extent; the 200-400 m slabs and road plane would inflate
        the automatic extent and clip everything near the camera, so it is pinned explicitly. -->
   <statistic extent="10" center="15 0 0"/>
@@ -258,6 +259,28 @@ class World:
 
     def park_pedestrian(self, slot: int) -> None:
         self._place(int(self.m_ped[slot]), (0.0, 4.0 + 2.0 * slot, PARK[2]))
+
+    # -------------------------------------------------------------- scenarios
+    def apply_scenario(self, sc, *, tyre_mu: float | None = None, ground_mu: float | None = None,
+                       payload_mass: float | None = None, with_pedestrians: bool = True) -> None:
+        """Load a ``Scenario``'s terrain, obstacles and physical parameters into this world.
+
+        ``tyre_mu`` / ``ground_mu`` / ``payload_mass`` override the scenario's true values, which is
+        how a planner builds its (deliberately mismatched) internal model.
+        """
+        self.clear_all()
+        if sc.has_kerb:
+            self.set_crossing(sc.kerb_h, sc.x_down, sc.x_up, ramp_down=sc.ramp_down, ramp_up=sc.ramp_up)
+        else:
+            self.set_flat()
+        self.set_tyre_friction(sc.tyre_mu if tyre_mu is None else tyre_mu)
+        self.set_ground_friction(sc.ground_mu if ground_mu is None else ground_mu)
+        mass = sc.payload_mass if payload_mass is None else payload_mass
+        if abs(self.model.body_mass[self.b_payload] - mass) > 1e-9:
+            self.set_payload_mass(mass)
+        for ob in sc.obstacles:
+            self.set_obstacle(ob.slot, ob.x, ob.y, ob.z_surface)
+        _ = with_pedestrians   # pedestrians are placed by the environment's crowd model
 
     # --------------------------------------------------------------- physics
     def set_tyre_friction(self, mu: float) -> None:
