@@ -1,0 +1,145 @@
+{
+  "vehicle": {
+    "name": "nominal",
+    "chassis_half": [
+      0.42,
+      0.24,
+      0.07
+    ],
+    "chassis_mass": 22.0,
+    "payload_half": [
+      0.18,
+      0.13,
+      0.07
+    ],
+    "payload_mass": 4.0,
+    "payload_offset_z": 0.16,
+    "wheelbase": 0.62,
+    "track": 0.62,
+    "axle_drop": 0.06,
+    "wheel_radius": 0.15,
+    "wheel_half_width": 0.035,
+    "wheel_mass": 1.65,
+    "knuckle_mass": 0.6,
+    "susp_k": 4500.0,
+    "susp_c": 350.0,
+    "susp_range": [
+      -0.08,
+      0.06
+    ],
+    "iso_kz": 2200.0,
+    "iso_cz": 180.0,
+    "iso_kxy": 2200.0,
+    "iso_cxy": 180.0,
+    "iso_range_z": 0.05,
+    "iso_range_xy": 0.04,
+    "motor_peak_torque": 25.0,
+    "motor_kv": 8.0,
+    "wheel_speed_max": 30.0,
+    "wheel_damping": 0.05,
+    "wheel_armature": 0.02,
+    "steer_kp": 250.0,
+    "steer_kv": 12.0,
+    "steer_range": 0.65,
+    "friction": 1.0,
+    "tyre_solref": [
+      0.03,
+      1.0
+    ]
+  },
+  "static": {
+    "ride_height_m": 0.20956079666720795,
+    "ride_height_expected_m": 0.21,
+    "ride_height_err_mm": -0.43920333279204304,
+    "susp_deflection_mm": [
+      0.001905624279868874,
+      0.0019131857401769974,
+      0.00026681428833458823,
+      0.00027437574340120517
+    ],
+    "payload_acc_z": 9.810000000236295,
+    "payload_acc_expected": 9.81
+  },
+  "tyre": {
+    "penetration_mm": [
+      0.4381245862647154,
+      0.4381247036699121,
+      0.4381029697820005,
+      0.438103087192554
+    ],
+    "wheel_load_N": 85.8375,
+    "kt_eff_N_per_m": 195925.10622628353
+  },
+  "ringdown": [
+    {
+      "zeta_target": 0.1,
+      "kt_eff": 198377.36305663275,
+      "n_peaks": 8,
+      "analytic_omega_n": 26.027358590622512,
+      "analytic_zeta": 0.0966904416773661,
+      "measured_omega_n": 26.21899248862888,
+      "measured_zeta": 0.10030176745930135,
+      "omega_n_err_pct": 0.7362787020401385,
+      "zeta_err_pct": 3.734935655776006
+    },
+    {
+      "zeta_target": 0.2,
+      "kt_eff": 198372.12202647998,
+      "n_peaks": 5,
+      "analytic_omega_n": 26.061405773379338,
+      "analytic_zeta": 0.1936258081988482,
+      "measured_omega_n": 26.267102195989317,
+      "measured_zeta": 0.19730274229286626,
+      "omega_n_err_pct": 0.7892760060552506,
+      "zeta_err_pct": 1.898989668898876
+    },
+    {
+      "zeta_target": 0.3,
+      "kt_eff": 198372.13659179278,
+      "n_peaks": 4,
+      "analytic_omega_n": 26.118731520106692,
+      "analytic_zeta": 0.2910575488672107,
+      "measured_omega_n": 26.381421160328927,
+      "measured_zeta": 0.2959112114725713,
+      "omega_n_err_pct": 1.005751906519703,
+      "zeta_err_pct": 1.6675955061983272
+    }
+  ],
+  "rolling": [
+    {
+      "v_cmd": 0.5,
+      "v_measured": 0.49616875633851765,
+      "speed_err_pct": -0.7662487322964706,
+      "mean_speed_err_pct": -1.109714184153765,
+      "lateral_drift_m": 4.426475494675662e-06,
+      "wheel_omega_mean": 3.3126293995412164,
+      "wheel_omega_expected": 3.3333333333333335
+    },
+    {
+      "v_cmd": 1.0,
+      "v_measured": 0.9923375127403822,
+      "speed_err_pct": -0.7662487259617823,
+      "mean_speed_err_pct": -1.3012045376376569,
+      "lateral_drift_m": 4.4216989554163346e-06,
+      "wheel_omega_mean": 6.625258799123921,
+      "wheel_omega_expected": 6.666666666666667
+    },
+    {
+      "v_cmd": 2.0,
+      "v_measured": 1.9846750255789234,
+      "speed_err_pct": -0.7662487210538305,
+      "mean_speed_err_pct": -1.8708306190739599,
+      "lateral_drift_m": 4.261834941978981e-06,
+      "wheel_omega_mean": 13.250517598343635,
+      "wheel_omega_expected": 13.333333333333334
+    }
+  ],
+  "soak": {
+    "finite": true,
+    "steps": 300000,
+    "resets": 4,
+    "max_speed_mps": 2.9887885550147226,
+    "steps_per_s": 36976.69016568121,
+    "wall_s": 8.113219400000162
+  }
+}

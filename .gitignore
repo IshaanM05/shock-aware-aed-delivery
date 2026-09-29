@@ -27,8 +27,6 @@ checkpoints/
 tmp/
 .cache/
 
-# Local tooling
-.claude/
 
 # run logs
 results/_*.log

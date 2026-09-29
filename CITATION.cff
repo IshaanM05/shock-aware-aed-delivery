@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "AED-Rover: shock-aware autonomous sidewalk AED delivery in MuJoCo"
+type: software
+authors:
+  - family-names: Mondal
+    given-names: Ishaan
+version: 0.1.0
+license: MIT
+keywords:
+  - robotics
+  - MuJoCo
+  - model predictive control
+  - reinforcement learning
+  - out-of-hospital cardiac arrest
+  - AED delivery
+abstract: >-
+  A MuJoCo study of a four-wheel sidewalk rover that delivers an automated external defibrillator:
+  a mechanically co-designed vehicle, physics-in-the-loop MPPI and domain-randomised PPO against
+  classical navigation, and a clinical break-even analysis against ambulance and drone delivery.
+  The problem statement originates from the NMIMS MPSTME MDRIIA 2026 course brief (Group 03).

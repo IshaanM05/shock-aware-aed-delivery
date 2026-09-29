@@ -96,6 +96,14 @@ EXTRA_COLUMNS = (
 )
 OD_COLUMNS = REQUIRED_COLUMNS + EXTRA_COLUMNS
 
+# Decimals kept in the committed table (rounding is monotone, so length ordering is preserved;
+# 1e-6 degrees is about 0.1 m).
+ROUND_DECIMALS = {
+    "straight_m": 2, "walk_m": 2, "drive_m": 2, "walk_graph_m": 2, "drive_graph_m": 2,
+    "walk_access_m": 2, "drive_access_m": 2, "walk_factor": 4, "drive_factor": 4,
+    "walk_footway_frac": 4, "o_lat": 6, "o_lon": 6, "d_lat": 6, "d_lon": 6,
+}
+
 SUMMARY_METRICS = (
     "straight_m", "walk_m", "walk_factor", "drive_m", "drive_factor", "n_crossings",
     "n_kerb_tagged", "n_crossings_major", "walk_footway_frac",
@@ -545,8 +553,6 @@ def count_major_road_crossings(net: RoutingNetwork, path: Sequence[int], index: 
     for run in runs:
         line = LineString([net.xy[n] for n in run])
         length = line.length
-        if length <= 2.0 * merge_m / 3.0:
-            continue
         accepted: list[tuple[float, float]] = []
         for i in index.tree.query(line, predicate="intersects"):
             road = index.lines[int(i)]
@@ -868,7 +874,7 @@ def build_od_table(pairs: OdPairs, walk: RoutingNetwork, drive: RoutingNetwork,
             "d_lat": float(rec.d_lat), "d_lon": float(rec.d_lon),
             "osm_attribution": ATTRIBUTION,
         })
-    return pd.DataFrame(rows, columns=list(OD_COLUMNS))
+    return pd.DataFrame(rows, columns=list(OD_COLUMNS)).round(ROUND_DECIMALS)
 
 
 # ---------------------------------------------------------------------------------------------
