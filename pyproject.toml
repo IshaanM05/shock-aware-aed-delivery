@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aedrover"
+version = "0.1.0"
+description = "Shock-aware autonomous sidewalk AED delivery in MuJoCo: physics-in-the-loop MPC and learned policies versus classical navigation, with a clinical-outcome evaluation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ishaan Mondal" }]
+dependencies = [
+    "mujoco>=3.2",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+    "pyyaml>=6.0",
+    "gymnasium>=0.29",
+]
+
+[project.optional-dependencies]
+viz = ["imageio>=2.34", "imageio-ffmpeg>=0.5"]
+rl = ["stable-baselines3>=2.3", "torch>=2.2"]
+geo = ["osmnx>=1.9", "geopandas>=0.14", "shapely>=2.0", "networkx>=3.2"]
+dev = ["pytest>=8", "ruff>=0.5", "pytest-xdist>=3.5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "slow: long-running physics/statistics tests (deselect with -m 'not slow')",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests", "scripts", "experiments"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "NPY"]
+ignore = ["E501"]

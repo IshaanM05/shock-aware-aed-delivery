@@ -1,0 +1,14 @@
+# Nominal AED-Rover vehicle (also the defaults of aedrover.sim.VehicleParams).
+# Units: SI (m, kg, s, rad). Frame: x forward, y left, z up (REP-103).
+chassis_mass: 22.0
+payload_mass: 4.0
+wheelbase: 0.62
+track: 0.62
+wheel_radius: 0.15
+wheel_half_width: 0.035
+susp_k: 4500.0
+susp_c: 350.0
+iso_kz: 2200.0
+iso_cz: 180.0
+motor_peak_torque: 25.0
+friction: 1.0
