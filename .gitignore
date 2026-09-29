@@ -29,3 +29,10 @@ tmp/
 
 # Local tooling
 .claude/
+
+# run logs
+results/_*.log
+
+# draft GIFs are large; the README GIF is regenerated compactly at release time
+assets/*.gif
+results/_*.log

@@ -125,3 +125,18 @@ def test_model_compiles_from_scratch():
     w = World(VEH)
     assert isinstance(w.model, mujoco.MjModel)
     assert w.model.nu == 6
+
+
+def test_motor_derating_does_not_leak_between_rovers():
+    """Regression: a new Rover must not inherit the previous episode's derated torque limit."""
+    w = World(VEH)
+    w.set_flat()
+    r1 = Rover(w)
+    r1.reset(0.0, 0.0, 0.0, settle_s=0.5)
+    for _ in range(200):
+        r1.step(3.0, 0.0, log=False)           # near top speed -> heavy derating
+    derated = w.model.actuator_forcerange[r1.a_drive, 1].copy()
+    assert derated.max() < VEH.motor_peak_torque
+    r2 = Rover(w)                              # fresh controller object on the same model
+    r2.reset(0.0, 0.0, 0.0)
+    np.testing.assert_allclose(w.model.actuator_forcerange[r2.a_drive, 1], VEH.motor_peak_torque)

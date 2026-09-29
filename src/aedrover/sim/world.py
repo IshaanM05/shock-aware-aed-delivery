@@ -107,16 +107,19 @@ def build_xml(veh: VehicleParams, spec: WorldSpec = WorldSpec(), *, start_x: flo
   <option timestep="{spec.timestep}" integrator="implicitfast" gravity="0 0 -9.81" cone="pyramidal"
           iterations="30" ls_iterations="12" noslip_iterations="0"/>
   <size memory="64M"/>
+  <!-- znear/zfar are in units of the model extent; the 200-400 m slabs and road plane would inflate
+       the automatic extent and clip everything near the camera, so it is pinned explicitly. -->
+  <statistic extent="10" center="15 0 0"/>
   <visual>
     <global offwidth="1280" offheight="720"/>
     <quality shadowsize="4096" offsamples="4"/>
-    <headlight ambient="0.45 0.45 0.45" diffuse="0.5 0.5 0.5" specular="0.1 0.1 0.1"/>
-    <map znear="0.02" zfar="300"/>
+    <headlight ambient="0.32 0.32 0.32" diffuse="0.35 0.35 0.35" specular="0.05 0.05 0.05"/>
+    <map znear="0.004" zfar="40" shadowclip="1.0" shadowscale="0.6"/>
   </visual>
   <asset>
     <texture type="skybox" builtin="gradient" rgb1="0.62 0.75 0.9" rgb2="0.94 0.95 0.97" width="512" height="512"/>
-    <texture name="tex_road" type="2d" builtin="checker" rgb1="0.19 0.19 0.2" rgb2="0.21 0.21 0.22"
-             width="256" height="256" mark="edge" markrgb="0.3 0.3 0.3"/>
+    <texture name="tex_road" type="2d" builtin="checker" rgb1="0.30 0.30 0.32" rgb2="0.33 0.33 0.35"
+             width="256" height="256" mark="edge" markrgb="0.42 0.42 0.44"/>
     <texture name="tex_walk" type="2d" builtin="checker" rgb1="0.72 0.7 0.66" rgb2="0.66 0.64 0.6"
              width="256" height="256" mark="edge" markrgb="0.5 0.49 0.46"/>
     <material name="road" texture="tex_road" texrepeat="60 60" texuniform="true" reflectance="0.0"/>
@@ -126,8 +129,8 @@ def build_xml(veh: VehicleParams, spec: WorldSpec = WorldSpec(), *, start_x: flo
     {vehicle_contact_excludes_xml()}
   </contact>
   <worldbody>
-    <light name="sun" directional="true" pos="0 0 30" dir="-0.35 0.25 -1" diffuse="0.75 0.75 0.7"
-           specular="0.15 0.15 0.15" castshadow="true"/>
+    <light name="sun" directional="true" pos="0 0 30" dir="-0.35 0.25 -1" diffuse="0.55 0.55 0.52"
+           specular="0.1 0.1 0.1" castshadow="true"/>
     <geom name="road" type="plane" size="400 400 0.1" material="road" friction="{mu} 0.005 0.0001"
           group="{GROUP_WORLD}"/>
 {slabs}

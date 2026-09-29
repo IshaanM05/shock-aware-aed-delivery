@@ -47,7 +47,8 @@ class Rover:
         self.s_chs = slice(m.sensor_adr[s_chs], m.sensor_adr[s_chs] + 3)
         s_gyr = sid("chassis_gyro")
         self.s_gyr = slice(m.sensor_adr[s_gyr], m.sensor_adr[s_gyr] + 3)
-        self._forcerange0 = m.actuator_forcerange[self.a_drive].copy()
+        tau = self.p.motor_peak_torque
+        self._forcerange0 = np.tile([-tau, tau], (4, 1))   # nominal, NOT read back from the model
 
         L, W = self.p.wheelbase, self.p.track
         self._L, self._W = L, W
@@ -71,6 +72,7 @@ class Rover:
             d.qvel[dof:dof + 3] = (speed * np.cos(yaw), speed * np.sin(yaw), 0.0)
             d.qvel[self.vadr_spin] = speed / p.wheel_radius
         d.ctrl[:] = 0.0
+        self.m.actuator_forcerange[self.a_drive] = self._forcerange0   # undo previous-episode derating
         if speed:
             d.ctrl[self.a_drive] = speed / p.wheel_radius
         self.w.apply_mocap()
