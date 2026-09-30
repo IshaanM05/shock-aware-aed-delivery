@@ -45,7 +45,7 @@ def run_kerb_trial(t: KerbTrial, x_kerb: float = 7.0) -> dict:
                         wheel_mass=wheel_mass_for(t.wheel_radius, t.motor_peak_torque))
     w = _world_for(veh)
     w.clear_all()
-    if t.payload_mass != w.model.body_mass[w.b_payload]:
+    if t.payload_mass != float(w.model.body_mass[w.b_payload]):
         w.set_payload_mass(t.payload_mass)
     up = t.direction == "up"
     if up:

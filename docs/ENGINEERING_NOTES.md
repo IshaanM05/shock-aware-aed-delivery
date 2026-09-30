@@ -19,6 +19,7 @@ regression test. They are recorded because none of them raises an error.
 | 12 | Only `info["episode"]` metrics of the first process survived in PPO logs | SB3's `VecMonitor` overwrites `info["episode"]` | Metrics are re-published as `ep_metrics` |
 | 13 | A safety filter that was too conservative deadlocked planners | A straight-ahead lane test flagged an obstacle 0.5 m to the side as "ahead" | The filter sweeps the actual footprint along the commanded steering arc (`test_safety_filter_ignores_an_obstacle_beside_the_path...`) |
 | 14 | Pedestrians appeared next to the rover | The stream model respawned pedestrians at the entry point regardless of the rover | Respawn only when the entry is at least 6 m from the rover |
+| 15 | The same seed gave a different episode (24.70 s vs 23.28 s, peak shock 3.063 g vs 3.085 g) depending on which jobs a worker had run earlier | `World.set_payload_mass` rescaled the payload inertia by a ratio in place, so its rounding residue depended on every mass the model had ever had; contact dynamics amplified it into different trajectories | Inertia is recomputed from the compiled values for each mass (`test_an_episode_does_not_depend_on_which_jobs_ran_before_it`). Benchmark rows written before this fix are valid samples but not individually reproducible from their seed |
 
 ## Performance
 

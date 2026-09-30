@@ -67,7 +67,8 @@ class DepthDecoder:
         self.v, self.d = v, d[keep]
 
     def __call__(self, raw: np.ndarray) -> np.ndarray:
-        out = np.interp(raw, self.v, self.d, left=self.d[-1], right=self.d[0])
+        # values are sorted ascending, so d[0] is the farthest distance and d[-1] the nearest
+        out = np.interp(raw, self.v, self.d, left=self.d[0], right=self.d[-1])
         return np.where(raw <= self.v[0] + 1e-6, 1e4, out).astype(np.float32)
 
 

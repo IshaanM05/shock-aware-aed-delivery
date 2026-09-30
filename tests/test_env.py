@@ -126,3 +126,25 @@ def test_safety_filter_never_accelerates_and_counts_interventions():
     assert v < 2.0 and d == 0.1 and sf.n_interventions == 1
     v2, _ = sf(_obs(), 1.0, 0.0)
     assert v2 == 1.0
+
+
+def test_an_episode_does_not_depend_on_which_jobs_ran_before_it():
+    """Same seed, same result, whatever the environment did earlier (engineering note 15).
+
+    The payload inertia used to be rescaled in place on every scenario change; the rounding residue depended on
+    the whole mass history and contact dynamics amplified it into different trajectories.
+    """
+    def episode(e):
+        c = make_controller("dwa", v_cruise=2.0)
+        return run_episode(e, c, SafetyFilter(), seed=5010, options={"family": "mixed"})
+
+    fresh = AEDRoverEnv(veh=VEH, obs_mode="dict")
+    a = episode(fresh)
+    used = AEDRoverEnv(veh=VEH, obs_mode="dict")
+    for seed, fam in ((5011, "mixed"), (5012, "crowded"), (5013, "kerb"), (5014, "slippery")):
+        run_episode(used, make_controller("dwa", v_cruise=2.0), SafetyFilter(), seed=seed, options={"family": fam})
+    b = episode(used)
+    for k in ("outcome", "time_s", "peak_shock_g", "min_clearance_m", "path_m"):
+        assert a[k] == b[k], k
+    w = used.world
+    assert np.array_equal(w.model.body_inertia[w.b_payload], w._payload_inertia0 * (w.model.body_mass[w.b_payload] / w._payload_mass0))

@@ -160,7 +160,7 @@ def _facade_materials(rx: RenderXml, mats: Materials) -> list[str]:
 
 def _buildings(rx: RenderXml, ranges, rng: np.random.Generator, mats: Materials) -> list[dict]:
     facades = _facade_materials(rx, mats)
-    roof = mats("roof", (0.22, 0.21, 0.21), roughness=0.95)
+    roof = mats("roof", (0.46, 0.41, 0.36), roughness=0.95)
     placed: list[dict] = []
     for side in (-1.0, 1.0):
         for x0, x1 in ranges:

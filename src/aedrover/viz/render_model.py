@@ -56,10 +56,10 @@ class RenderXml:
     world_xml: list[str] = field(default_factory=list)
     body_xml: dict[str, list[str]] = field(default_factory=dict)   # injected right after a named body's opening tag
 
-    def add_base(self) -> None:
+    def add_base(self, wet: bool = False) -> None:
         look = self.look
         self.files.update(A.sky_faces(look))
-        self.files.update(A.asphalt_maps())
+        self.files.update(A.asphalt_maps(wet=wet))
         self.files.update(A.paving_maps())
         tex = ['<texture name="sky" type="skybox" fileright="right.png" fileleft="left.png" fileup="up.png" '
                'filedown="down.png" filefront="front.png" fileback="back.png"/>']
@@ -159,7 +159,7 @@ class RenderScene:
                  backend: str = "filament", builder=None, **backend_kw) -> None:
         self.rec, self.look, self.size = rec, look or load_look(), size
         rx = RenderXml(rec.xml, self.look, size)
-        rx.add_base()
+        rx.add_base(wet=str(rec.meta.get("family", "")) == "slippery")
         self.animators = list(builder(rx, rec, self.look) or []) if builder is not None else []
         self.xml = rx.build()
         self.model = mujoco.MjModel.from_xml_string(self.xml, rx.files)

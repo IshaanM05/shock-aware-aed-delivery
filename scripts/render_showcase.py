@@ -28,7 +28,14 @@ from aedrover.viz import hud  # noqa: E402
 from aedrover.viz.film import Card, Film, Shot  # noqa: E402
 from aedrover.viz.overlays import OverlayConfig  # noqa: E402
 from aedrover.viz.recording import Recording, record_episode  # noqa: E402
-from aedrover.viz.shots import ease, rig_chase, rig_crane, rig_kerb, rig_orbit, rig_top  # noqa: E402
+from aedrover.viz.shots import (  # noqa: E402
+    ease,
+    rig_chase,
+    rig_crane,
+    rig_kerb,
+    rig_orbit,
+    rig_top,
+)
 
 CACHE = ROOT / ".cache" / "recordings"
 LABEL = {"ppo": "PPO (learned)", "mppi": "MPPI (physics rollouts)", "dwa": "Dynamic window", "apf": "Potential field",
@@ -73,11 +80,13 @@ def build_items(recs: dict[str, Recording], fps: int, size: tuple[int, int]) -> 
     sec = lambda s: int(round(s * fps))                       # noqa: E731
     peak = {k: int(np.argmax(r.shock_g)) for k, r in recs.items()}
     flow = OverlayConfig(rollouts=False)
+    clean = OverlayConfig(rollouts=False, lidar=False)      # kerb close-ups: just path and halo
     rows, n_total = result_rows()
     footer = f"{n_total:,} simulated episodes | 5 scenario families | one safety filter and speed cap for every controller"
 
     def results_card(p: float) -> np.ndarray:
-        return hud.results_card(size, "Learned control wins, safely", rows, footer, progress=float(ease(min(p * 2.2, 1.0))))
+        return hud.results_card(size, "Safe delivery by controller", rows, footer, progress=float(ease(min(p * 2.2, 1.0))),
+                                note="in-distribution benchmark; out-of-distribution results are in the repository")
 
     def end_card(p: float) -> np.ndarray:
         return hud.end_card(size, "Shock-aware sidewalk AED delivery",
@@ -85,11 +94,11 @@ def build_items(recs: dict[str, Recording], fps: int, size: tuple[int, int]) -> 
 
     def kerb(key: str, name: str, caption: str) -> Shot:
         return Shot(f"kerb-{key}", key, rig_kerb(), frames=sec(6.0), start_step=peak[key] - 75, slow=(peak[key], 0.55, 0.18),
-                    overlays=flow, controller=name, caption=caption, dof=0.30)
+                    overlays=clean, controller=name, caption=caption, dof=0.30)
 
     mppi_n = len(recs["mppi"])
     return [
-        Shot("title-crane", "ppo", rig_crane((-26, -16, 24), (-5.0, -2.9, 1.9), fov0=58, fov1=48), frames=sec(6.0), start_step=0,
+        Shot("title-crane", "ppo", rig_crane((-46, 5, 36), (-5.0, -2.9, 1.9), fov0=62, fov1=48), frames=sec(6.0), start_step=0,
              overlays=flow, controller="PPO", title=("Shock-aware AED delivery", "MuJoCo  |  learned control vs classical navigation"),
              dof=0.25, fade_in=0.6),
         Shot("crowd-chase", "crowd", rig_chase(back=3.9, height=1.35, swing_deg=24), frames=sec(10.0), start_step=120,
@@ -103,7 +112,7 @@ def build_items(recs: dict[str, Recording], fps: int, size: tuple[int, int]) -> 
         Shot("mppi-rollouts", "mppi", rig_top(height=11.0, back=3.0, fovy=46), frames=sec(10.0), start_step=int(0.12 * mppi_n),
              overlays=OverlayConfig(), controller="MPPI", caption="128 sampled physics rollouts every 0.1 s", dof=0.0),
         Card("results", sec(8.0), results_card),
-        Shot("closing-crane", "ppo", rig_crane((-4.6, -2.9, 1.8), (-30, -20, 26), fov0=46, fov1=58), frames=sec(5.0),
+        Shot("closing-crane", "ppo", rig_crane((-4.6, -2.9, 1.8), (-40, 6, 32), fov0=46, fov1=60), frames=sec(5.0),
              start_step=int(0.72 * len(recs["ppo"])), overlays=flow, controller="PPO", show_hud=False, dof=0.25, fade_out=0.6),
         Card("end-card", sec(5.0), end_card, fade_in=0.6, fade_out=0.8),
     ]

@@ -173,6 +173,8 @@ class World:
         self.g_road = gid("road")
         self.b_chassis = bid("chassis")
         self.b_payload = bid("payload")
+        self._payload_mass0 = float(m.body_mass[self.b_payload])
+        self._payload_inertia0 = m.body_inertia[self.b_payload].copy()
         self._mpos = self.data.mocap_pos.copy()
         self._mquat = self.data.mocap_quat.copy()
         self.clear_all()
@@ -276,7 +278,7 @@ class World:
         self.set_tyre_friction(sc.tyre_mu if tyre_mu is None else tyre_mu)
         self.set_ground_friction(sc.ground_mu if ground_mu is None else ground_mu)
         mass = sc.payload_mass if payload_mass is None else payload_mass
-        if abs(self.model.body_mass[self.b_payload] - mass) > 1e-9:
+        if mass != float(self.model.body_mass[self.b_payload]):
             self.set_payload_mass(mass)
         for ob in sc.obstacles:
             self.set_obstacle(ob.slot, ob.x, ob.y, ob.z_surface)
@@ -291,9 +293,13 @@ class World:
             self.model.geom_friction[g, 0] = mu
 
     def set_payload_mass(self, mass: float) -> None:
-        """Change the payload mass in place (body mass and inertia scale together)."""
+        """Set the payload mass; inertia is recomputed from the *compiled* values, never rescaled in place.
+
+        Rescaling the current inertia by a ratio leaves a rounding residue that depends on every mass
+        this model has had before. Contact dynamics amplify it, so the same seed gave different episodes
+        depending on which jobs a worker had run earlier (`tests/test_env.py`, engineering note 15).
+        """
         m = self.model
-        scale = mass / m.body_mass[self.b_payload]
         m.body_mass[self.b_payload] = mass
-        m.body_inertia[self.b_payload] *= scale
+        m.body_inertia[self.b_payload] = self._payload_inertia0 * (mass / self._payload_mass0)
         mujoco.mj_setConst(m, self.data)

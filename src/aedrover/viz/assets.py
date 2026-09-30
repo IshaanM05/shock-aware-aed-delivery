@@ -272,15 +272,18 @@ def facade_maps(size: int = 1024, seed: int = 31, bays: int = 4, floors: int = 4
 
 
 @lru_cache(maxsize=4)
-def asphalt_maps(size: int = 1024, seed: int = 11) -> dict[str, bytes]:
+def asphalt_maps(size: int = 1024, seed: int = 11, wet: bool = False) -> dict[str, bytes]:
     """Dark asphalt with aggregate speckle and patchy wetness: albedo, normal and ORM maps."""
     speck = fbm_tile(size, 64, 3, seed)
     mid = fbm_tile(size, 8, 4, seed + 1)
     tone = 0.10 + 0.05 * mid + 0.04 * (speck - 0.5)
     albedo = srgb_encode(np.repeat(tone[..., None], 3, -1) * np.array([1.0, 0.94, 0.86], np.float32))
     normal = normal_from_height(0.6 * speck + 0.4 * fbm_tile(size, 128, 2, seed + 2), 2.2)
-    wet = smoothstep(0.50, 0.72, fbm_tile(size, 4, 4, seed + 3))            # faint damp patches
-    rough = np.clip(0.80 - 0.22 * wet + 0.12 * (speck - 0.5), 0.45, 1.0)
+    patches = smoothstep(0.45, 0.68, fbm_tile(size, 4, 4, seed + 3))        # puddle-like patches
+    if wet:                                                                # slippery family: glossy and patchy
+        rough = np.clip(0.42 - 0.30 * patches + 0.10 * (speck - 0.5), 0.08, 1.0)
+    else:                                                                  # dry asphalt: matte, so grazing light does not look like water
+        rough = np.clip(0.93 + 0.05 * (speck - 0.5), 0.85, 1.0)
     orm = np.stack([np.full_like(rough, 255), rough * 255, np.zeros_like(rough)], -1).astype(np.uint8)
     return {"asphalt_albedo.png": png_bytes(albedo), "asphalt_normal.png": png_bytes(normal),
             "asphalt_orm.png": png_bytes(orm)}

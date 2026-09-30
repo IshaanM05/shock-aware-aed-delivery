@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-viz = ["imageio>=2.34", "imageio-ffmpeg>=0.5"]
+viz = ["imageio>=2.34", "imageio-ffmpeg>=0.5", "opencv-python-headless>=4.8", "pillow>=10"]
 rl = ["stable-baselines3>=2.3", "torch>=2.2"]
 geo = ["osmnx>=1.9", "geopandas>=0.14", "shapely>=2.0", "networkx>=3.2"]
 dev = ["pytest>=8", "ruff>=0.5", "pytest-xdist>=3.5"]
@@ -34,6 +34,7 @@ testpaths = ["tests"]
 addopts = "-q"
 markers = [
     "slow: long-running physics/statistics tests (deselect with -m 'not slow')",
+    "gpu: need a GPU and MuJoCo's Filament renderer (skipped automatically where they are unavailable)",
 ]
 
 [tool.ruff]

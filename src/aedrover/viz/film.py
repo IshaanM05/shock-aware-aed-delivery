@@ -127,8 +127,7 @@ class Film:
         out.parent.mkdir(parents=True, exist_ok=True)
         t0 = time.perf_counter()
         writer = imageio.get_writer(str(out), fps=self.fps, codec="libx264", quality=None, macro_block_size=1,
-                                    ffmpeg_params=["-crf", str(crf), "-preset", "slow", "-pix_fmt", "yuv420p",
-                                                   "-movflags", "+faststart"])
+                                    ffmpeg_params=["-crf", str(crf), "-preset", "slow", "-movflags", "+faststart"])
         n = 0
         try:
             for item in items:

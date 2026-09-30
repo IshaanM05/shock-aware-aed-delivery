@@ -127,35 +127,39 @@ def title_overlay(frame: np.ndarray, title: str, subtitle: str, alpha: float) ->
 
 
 def results_card(size: tuple[int, int], heading: str, rows: list[tuple[str, float, float, str]], footer: str,
-                 progress: float = 1.0) -> np.ndarray:
+                 progress: float = 1.0, note: str = "") -> np.ndarray:
     """Dark golden-hour card with horizontal bars. ``rows`` = (label, value 0..1, ci half-width, note)."""
     w, h = size
     s = h / 1080.0
-    img = _gradient(size).convert("RGBA")
-    d = ImageDraw.Draw(img)
+    base = _gradient(size).convert("RGBA")
+    ov = Image.new("RGBA", size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
     d.text((int(120 * s), int(110 * s)), heading, font=font("semibold", int(66 * s)), fill=(*INK, 255))
     d.text((int(124 * s), int(200 * s)), "safe delivery: goal reached with payload shock under 3 g", font=font("light", int(32 * s)),
            fill=(*MUTED, 255))
     top, rowh = int(330 * s), int(112 * s)
     bx0, bx1 = int(560 * s), w - int(240 * s)
-    for i, (label, val, ci, note) in enumerate(rows):
+    for i, (label, val, ci, row_note) in enumerate(rows):
         y = top + i * rowh
         d.text((int(120 * s), y + int(14 * s)), label, font=font("semibold", int(40 * s)), fill=(*INK, 255))
-        d.rounded_rectangle([bx0, y + int(10 * s), bx1, y + int(62 * s)], int(10 * s), fill=(255, 255, 255, 34))
+        d.rounded_rectangle([bx0, y + int(10 * s), bx1, y + int(62 * s)], int(10 * s), fill=(255, 255, 255, 30))
         frac = float(np.clip(val * progress, 0, 1))
         colour = AMBER if i == 0 else (236, 222, 200)
-        d.rounded_rectangle([bx0, y + int(10 * s), bx0 + max(int((bx1 - bx0) * frac), int(10 * s)), y + int(62 * s)], int(10 * s), fill=(*colour, 255))
+        d.rounded_rectangle([bx0, y + int(10 * s), bx0 + max(int((bx1 - bx0) * frac), int(10 * s)), y + int(62 * s)], int(10 * s),
+                            fill=(*colour, 255))
         if progress >= 0.98:
             lo, hi = np.clip(val - ci, 0, 1), np.clip(val + ci, 0, 1)          # 95% interval whisker
-            xm, cy = bx0 + (bx1 - bx0) * 0, y + int(36 * s)
-            d.line([(xm + (bx1 - bx0) * lo, cy), (xm + (bx1 - bx0) * hi, cy)], fill=(20, 14, 10, 230), width=max(int(3 * s), 1))
+            cy = y + int(36 * s)
+            d.line([(bx0 + (bx1 - bx0) * lo, cy), (bx0 + (bx1 - bx0) * hi, cy)], fill=(20, 14, 10, 230), width=max(int(3 * s), 1))
             for xe in (lo, hi):
-                d.line([(xm + (bx1 - bx0) * xe, cy - int(9 * s)), (xm + (bx1 - bx0) * xe, cy + int(9 * s))], fill=(20, 14, 10, 230),
+                d.line([(bx0 + (bx1 - bx0) * xe, cy - int(9 * s)), (bx0 + (bx1 - bx0) * xe, cy + int(9 * s))], fill=(20, 14, 10, 230),
                        width=max(int(3 * s), 1))
             d.text((bx1 + int(24 * s), y + int(14 * s)), f"{100 * val:0.1f}%", font=font("semibold", int(40 * s)), fill=(*INK, 255))
-            d.text((bx0 + int(14 * s), y + int(70 * s)), note, font=font("regular", int(22 * s)), fill=(*MUTED, 255))
-    d.text((int(124 * s), h - int(120 * s)), footer, font=font("regular", int(26 * s)), fill=(*MUTED, 255))
-    return np.asarray(img.convert("RGB"))
+            d.text((bx0 + int(14 * s), y + int(70 * s)), row_note, font=font("regular", int(22 * s)), fill=(*MUTED, 255))
+    d.text((int(124 * s), h - int(150 * s)), footer, font=font("regular", int(26 * s)), fill=(*MUTED, 255))
+    if note:
+        d.text((int(124 * s), h - int(106 * s)), note, font=font("regular", int(24 * s)), fill=(*AMBER, 255))
+    return np.asarray(Image.alpha_composite(base, ov).convert("RGB"))
 
 
 def end_card(size: tuple[int, int], title: str, lines: list[str], alpha: float = 1.0) -> np.ndarray:

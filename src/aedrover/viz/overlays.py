@@ -74,7 +74,7 @@ def dress_overlays(rx: RenderXml, rec: Recording, cfg: OverlayConfig, mats: Mate
         mats.neon("ov_lidar_ring", (0.10, 0.55, 1.0), 1.2)
         n = len(rec.lidar_angles)
         pool("lhit", n, 0.045, lambda i: "ov_lidar_hit")
-        pool("lring", n, 0.02, lambda i: "ov_lidar_ring")
+        pool("lring", n, 0.014, lambda i: "ov_lidar_ring")
     if cfg.rollouts and has_rollouts:
         levels = 8
         for k in range(levels):
