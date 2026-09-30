@@ -11,6 +11,7 @@ controllers, so the comparison is paired) and writes results/benchmark_<tag>.csv
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -22,6 +23,12 @@ from aedrover.sim.scenario import FAMILIES
 from aedrover.sim.vehicle_mjcf import VehicleParams
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def tuned_mppi() -> dict:
+    """Frozen MPPI settings selected on tuning seeds (configs/mppi_tuned.json), if the tuning was run."""
+    path = ROOT / "configs" / "mppi_tuned.json"
+    return json.loads(path.read_text(encoding="utf-8"))["kwargs"] if path.exists() else {}
 
 
 def summarise(df: pd.DataFrame) -> pd.DataFrame:
@@ -58,7 +65,7 @@ def main() -> None:
     for name in args.controllers:
         extra = {"path": args.ppo_path} if name == "ppo" else {}
         if name == "mppi":
-            extra = {"K": args.mppi_samples, "H": args.mppi_horizon}
+            extra = {"K": args.mppi_samples, "H": args.mppi_horizon, **tuned_mppi()}
         specs.append(controller_spec(name, args.speed_cap, **extra))
     jobs = make_jobs(specs, args.families, range(args.seed0, args.seed0 + args.n),
                      shield=not args.no_shield, tag=args.tag,

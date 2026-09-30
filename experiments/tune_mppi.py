@@ -10,6 +10,7 @@ time. The winning variant is then frozen for the main benchmark; nothing is tune
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -62,9 +63,16 @@ def main() -> None:
                 time_med=("time_s", "median"), shock_med=("peak_shock_g", "median"))
     pd.set_option("display.width", 200)
     print(tab.round(3).to_string())
-    print(df.groupby("tag").agg(safe=("safe", "mean"), success=("success", "mean"),
-                                collision=("outcome", lambda x: (x == "collision").mean()),
-                                time_med=("time_s", "median")).round(3).sort_values("safe", ascending=False).to_string())
+    summ = df.groupby("tag").agg(safe=("safe", "mean"), success=("success", "mean"),
+                                 collision=("outcome", lambda x: (x == "collision").mean()),
+                                 time_med=("time_s", "median"))
+    summ = summ.sort_values(["safe", "collision", "time_med"], ascending=[False, True, True])
+    print(summ.round(3).to_string())
+    best = summ.index[0]                       # highest safe-delivery rate, then fewest collisions, then fastest
+    cfg = {"variant": best, "kwargs": VARIANTS[best], "tuning_seeds": [args.seed0, args.seed0 + args.n - 1],
+           "families": args.families, "score": summ.loc[best].round(4).to_dict()}
+    (ROOT / "configs" / "mppi_tuned.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    print("selected", best, "-> configs/mppi_tuned.json")
 
 
 if __name__ == "__main__":
