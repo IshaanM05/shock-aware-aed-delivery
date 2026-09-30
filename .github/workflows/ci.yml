@@ -26,7 +26,7 @@ jobs:
       - name: Lint
         run: ruff check src tests scripts experiments
       - name: Tests (fast set)
-        run: pytest -m "not slow" -n auto
+        run: pytest -m "not slow and not gpu" -n auto
 
   citations:
     runs-on: ubuntu-latest
