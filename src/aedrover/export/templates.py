@@ -433,6 +433,18 @@ def veh_table(pf: dict) -> str:
     return md_table(["Parameter", "Nominal (draft design)", "Optimised (co-design, shipped model)"], rows, ["l", "r", "r"])
 
 
+def speed_note(res) -> str:
+    """How the benchmark departed from the package defaults listed in the controller table."""
+    df = res.benchmark
+    if df is None or "speed_cap" not in df.columns or df["speed_cap"].dropna().empty:
+        return ""
+    cap = float(df["speed_cap"].dropna().iloc[0])
+    return (f"\n\nIn the benchmark every controller was given the same top speed of {cap:g} m/s (overriding the cruise speeds "
+            "above), so time differences reflect planning quality and not a speed advantage. The MPPI settings are the variant "
+            "frozen by `configs/mppi_tuned.json` on tuning seeds disjoint from every evaluation seed, and the PPO policy is the "
+            "checkpoint chosen on validation seeds (`results/ppo_selection.csv`).")
+
+
 def controller_table(pf: dict) -> str:
     pp_, apf, dwa, mp = pf["pure_pursuit"], pf["apf"], pf["dwa"], pf["mppi"]
     cur = pf["curb"]
@@ -1914,7 +1926,7 @@ def build_context(res: Results, refs: dict, pf: dict, xml: str, tel: dict) -> di
         "families": ", ".join(f"`{f}`" for f in pf["families"]),
         "kerb_range": f"{sd['kerb_range'][0]:g}-{sd['kerb_range'][1]:g}", "mu_range": f"{sd['mu_range'][0]:g}-{sd['mu_range'][1]:g}",
         "n_lidar": per["n_lidar"], "fov_deg": f"{per['fov_deg']:g}", "lidar_range": f"{per['lidar_range']:g}",
-        "snap_kerb_cm": f"{100 * tel['snapshot_kerb_h']:g}", "veh_table": veh_table(pf), "controller_table": controller_table(pf),
+        "snap_kerb_cm": f"{100 * tel['snapshot_kerb_h']:g}", "veh_table": veh_table(pf), "controller_table": controller_table(pf) + speed_note(res),
         "safety_table": safety_table(pf), "standards_table": standards_table(pf, res, bb, clb),
         "csv_rows": len(res.benchmark), "telemetry_seed": tel["seed"], "replay_note": tel["replay_note"],
         "provenance": provenance_table(res), "fig2_caption": tel["fig2_caption"],

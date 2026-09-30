@@ -27,7 +27,7 @@ Straight-line rolling on flat ground:
 | 1.0 | 0.992 | -0.77% | 0.0 mm |
 | 2.0 | 1.985 | -0.77% | 0.0 mm |
 
-* **Stability soak**: 300,000 physics steps of random speed and steering commands over a kerb field, 4 resets after leaving the arena, all states finite, peak speed 2.99 m/s.
+* **Stability soak**: 1,000,000 physics steps of random speed and steering commands over a kerb field, 16 resets after leaving the arena, all states finite, peak speed 3.01 m/s.
 
 ## Optimized design
 
@@ -52,5 +52,5 @@ Straight-line rolling on flat ground:
 | 1.0 | 0.993 | -0.70% | 0.0 mm |
 | 2.0 | 1.986 | -0.70% | 0.0 mm |
 
-* **Stability soak**: 300,000 physics steps of random speed and steering commands over a kerb field, 3 resets after leaving the arena, all states finite, peak speed 2.98 m/s.
+* **Stability soak**: 1,000,000 physics steps of random speed and steering commands over a kerb field, 19 resets after leaving the arena, all states finite, peak speed 3.27 m/s.
 
