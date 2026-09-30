@@ -100,3 +100,19 @@ light, hard-edged low-poly building and tree shapes. The visuals are for communi
 project reports comes from the physics simulation and the files under `results/`. The PBR path needs MuJoCo 3.14
 or newer and a GPU with OpenGL; elsewhere the classic backend draws a simpler image and the depth-based effects are
 skipped. Filament's Python API lives under `mujoco.experimental` and may change.
+
+## Next step: a rich-world mode
+
+Today the look is cosmetic by design: kerbs, ramps, bollards, planters and pedestrian capsules are physical, while
+buildings, shopfronts, parked cars and motorbikes, stalls, trees and lamps are visual only, and the live cinematic view
+(`scripts/live_cinematic.py`) plays back an episode that was simulated first. The planned next piece of work is an
+opt-in **rich-world mode**:
+
+* make selected street furniture collidable (parked vehicles and bikes, stalls, lamp posts, tree trunks) as extra
+  physics bodies, so the rover and the controllers must really avoid them;
+* step the simulation and the renderer together, so a live run is truly live, with no pre-simulation pass;
+* keep it separate from the benchmark: its scenarios and results are not comparable with `results/`, and it must
+  never change the standard environment, its seeds or its numbers.
+
+Open questions: how the planners and the safety filter perceive the new obstacles (lidar already sees any collidable
+geom), and how to animate the pedestrians' limbs incrementally instead of from a whole recorded episode.

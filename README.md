@@ -200,7 +200,8 @@ python scripts/render_showcase.py --quality draft          # the cinematic film,
 ```
 
 The cinematic look is cosmetic: kerbs, ramps, bollards, planters and pedestrian capsules are physical, while buildings,
-shops, parked vehicles and stalls are visual only, so the physics and the benchmark are unchanged.
+shops, parked vehicles and stalls are visual only, so the physics and the benchmark are unchanged. A collidable "rich-world" mode is the planned next step
+(see `docs/RENDERING.md`).
 
 Simulation, training and every experiment run on CPU; a GPU is not needed and is not used for them. A GPU is
 used only to draw the cinematic film and stills (`docs/RENDERING.md`); `scripts/render_demo.py` and
