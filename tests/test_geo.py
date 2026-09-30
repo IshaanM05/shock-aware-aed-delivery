@@ -9,10 +9,11 @@ import json
 import re
 from pathlib import Path
 
-import networkx as nx
 import numpy as np
 import pandas as pd
 import pytest
+
+nx = pytest.importorskip("networkx", reason="the geo tests need networkx (pip install -e '.[geo]')")
 
 pytest.importorskip("shapely")
 

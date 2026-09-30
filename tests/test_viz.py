@@ -9,6 +9,8 @@ import mujoco
 import numpy as np
 import pytest
 
+pytest.importorskip("cv2", reason="the renderer tests need opencv (pip install -e '.[viz]')")
+
 from aedrover.viz import assets as A
 from aedrover.viz import hud, post
 from aedrover.viz.camera import CameraPose, chase
