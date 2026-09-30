@@ -195,12 +195,16 @@ pip install -e ".[dev,viz]"       # add ",rl" for PPO training (PyTorch, Stable-
 pytest -m "not slow" -n auto      # about 200 tests
 python experiments/01_validate_suspension.py
 python experiments/03_controller_benchmark.py --n 10 --tag smoke --controllers pure_pursuit apf dwa
+python scripts/live_cinematic.py                        # watch a run in a window with the cinematic look (recommended demo)
 python scripts/render_showcase.py --quality draft          # the cinematic film, 720p30 (needs a GPU with OpenGL)
 ```
 
+The cinematic look is cosmetic: kerbs, ramps, bollards, planters and pedestrian capsules are physical, while buildings,
+shops, parked vehicles and stalls are visual only, so the physics and the benchmark are unchanged.
+
 Simulation, training and every experiment run on CPU; a GPU is not needed and is not used for them. A GPU is
 used only to draw the cinematic film and stills (`docs/RENDERING.md`); `scripts/render_demo.py` and
-`scripts/render_compare.py` draw quick classic-renderer previews without one.
+`scripts/render_compare.py` draw quick classic-renderer previews without one, and `scripts/live_viewer.py` opens MuJoCo's plain interactive viewer.
 
 ## Repository layout
 
