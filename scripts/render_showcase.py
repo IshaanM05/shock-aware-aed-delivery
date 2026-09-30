@@ -110,7 +110,7 @@ def build_items(recs: dict[str, Recording], fps: int, size: tuple[int, int]) -> 
         kerb("mppi", "MPPI", "physics-rollout planner"),
         kerb("ppo", "PPO (learned)", "learned policy: payload within budget"),
         Shot("mppi-rollouts", "mppi", rig_top(height=11.0, back=3.0, fovy=46), frames=sec(10.0), start_step=int(0.12 * mppi_n),
-             overlays=OverlayConfig(), controller="MPPI", caption="128 sampled physics rollouts every 0.1 s", dof=0.0),
+             overlays=OverlayConfig(), controller="MPPI", caption="physics rollouts every 0.1 s (24 of 128 drawn)", dof=0.0),
         Card("results", sec(8.0), results_card),
         Shot("closing-crane", "ppo", rig_crane((-4.6, -2.9, 1.8), (-40, 6, 32), fov0=46, fov1=60), frames=sec(5.0),
              start_step=int(0.72 * len(recs["ppo"])), overlays=flow, controller="PPO", show_hud=False, dof=0.25, fade_out=0.6),
@@ -118,7 +118,15 @@ def build_items(recs: dict[str, Recording], fps: int, size: tuple[int, int]) -> 
     ]
 
 
-def make_gif(src: Path, dst: Path, start: float, dur: float, width: int = 920, fps: int = 15, colors: int = 96) -> None:
+def compress(src: Path, dst: Path, crf: int = 28) -> None:
+    """Re-encode the master to a size GitHub accepts (the master stays under .cache, which is ignored)."""
+    import imageio_ffmpeg
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    subprocess.run([ff, "-y", "-loglevel", "error", "-i", str(src), "-c:v", "libx264", "-preset", "slow", "-crf", str(crf),
+                    "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", str(dst)], check=True)
+
+
+def make_gif(src: Path, dst: Path, start: float, dur: float, width: int = 840, fps: int = 12, colors: int = 80) -> None:
     import imageio_ffmpeg
     ff = imageio_ffmpeg.get_ffmpeg_exe()
     vf = (f"fps={fps},scale={width}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors={colors}:stats_mode=diff[p];"
@@ -130,13 +138,14 @@ def make_gif(src: Path, dst: Path, start: float, dur: float, width: int = 920, f
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--quality", choices=("draft", "high"), default="draft")
-    ap.add_argument("--out", default=None, help="output mp4 (default assets/showcase.mp4, or .cache for drafts)")
+    ap.add_argument("--out", default=None, help="output mp4 (default: the master in .cache, compressed to assets/showcase.mp4 for --quality high)")
     ap.add_argument("--hero", action="store_true", help="also write assets/hero.gif from the kerb-strike comparison")
     ap.add_argument("--poster", action="store_true", help="also write assets/showcase_poster.jpg")
     ap.add_argument("--refresh", action="store_true", help="re-simulate the cached episodes")
     a = ap.parse_args()
     size, fps, crf = ((1920, 1080), 60, 18) if a.quality == "high" else ((1280, 720), 30, 24)
-    out = Path(a.out) if a.out else (ROOT / "assets" / "showcase.mp4" if a.quality == "high" else CACHE.parent / "showcase_draft.mp4")
+    final = ROOT / "assets" / "showcase.mp4"
+    out = Path(a.out) if a.out else (CACHE.parent / "showcase_master.mp4" if a.quality == "high" else CACHE.parent / "showcase_draft.mp4")
     print("recording episodes (cached under .cache/recordings) ...", flush=True)
     recs = {k: get_recording(k, a.refresh) for k in EPISODES}
     film = Film(recs, size=size, fps=fps)
@@ -144,6 +153,9 @@ def main() -> None:
     t0 = time.perf_counter()
     film.render(items, out, crf=crf)
     print(f"total {time.perf_counter() - t0:.0f}s", flush=True)
+    if a.quality == "high" and not a.out:
+        compress(out, final)
+        print(f"wrote {final.relative_to(ROOT)} ({final.stat().st_size / 1e6:.0f} MB; master {out.stat().st_size / 1e6:.0f} MB stays in .cache)", flush=True)
     if a.hero:
         # the dynamic-window kerb strike then the PPO one: the clearest 10 seconds of the film
         starts, t = {}, 0.0

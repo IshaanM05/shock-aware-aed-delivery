@@ -9,11 +9,13 @@ ambulance and drone delivery.
 > Status: the standard experiment run is complete. Every number below is measured by code in this
 > repository and can be regenerated (`docs/REPRODUCE.md`). Not yet done: a paper draft and GPU-scale training.
 
-![Three controllers on the same kerb-and-crowd scenario (MuJoCo render)](assets/hero.gif)
+![A classical planner strikes a kerb in slow motion while the payload shock gauge passes its 3 g budget (MuJoCo render)](assets/hero.gif)
 
-*One scenario, not a statistic (mixed kerb and crowd, seed 5010, [full-quality video](assets/hero.mp4)). The
-dynamic-window planner arrives but peaks at 3.1 g against the 3 g payload budget; MPPI peaks at 1.6 g and PPO at
-1.8 g, and PPO arrives first. The statistics are in the benchmark below.*
+*One scenario, not a statistic (mixed kerb and crowd, seed 5010). The dynamic-window planner arrives but its payload
+peaks at 3.1 g against the 3 g budget (slow motion, live gauge). MPPI peaks at 1.6 g and PPO at 1.8 g on the same
+street; they are in the [68-second film](assets/showcase.mp4), along with MPPI's planning rollouts. Everything
+is drawn by MuJoCo's own PBR renderer from recorded episodes ([how](docs/RENDERING.md)); the statistics are in the
+benchmark below.*
 
 ![System overview](docs/figures/architecture.png)
 
@@ -172,15 +174,17 @@ The real Mumbai route geometry is in `data/osm`; crossing density is taken as an
 | [`docs/PPO_TRAINING.md`](docs/PPO_TRAINING.md) | learning curve and held-out evaluation, regenerated automatically |
 | [`docs/REPRODUCE.md`](docs/REPRODUCE.md) | every command in order, run times and seed ranges |
 | [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) | what the study supports and what it does not |
-| [`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) | 14 silent MuJoCo pitfalls, each with a regression test |
+| [`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) | 15 silent MuJoCo pitfalls, each with a regression test |
+| [`docs/RENDERING.md`](docs/RENDERING.md) | how the cinematic renderer works (PBR backend, recorded episodes, post-processing) and its MuJoCo quirks |
 | [`docs/NMIMS_EXPORT.md`](docs/NMIMS_EXPORT.md) | generating the course-template folder from this repository |
 
 ## Engineering notes worth reading
 
-[`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) records 14 MuJoCo behaviours that silently
+[`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) records 15 MuJoCo behaviours that silently
 produce wrong physics or wrong data without raising an error (for example, `mujoco.rollout` resets
 mocap bodies, which deletes all terrain from planner rollouts; `mj_multiRay`'s cutoff drops infinite
-planes; `<map znear>` is in units of model extent). Each has a regression test.
+planes; rescaling a body's inertia in place made the same seed give different episodes depending on
+what ran before it). Each has a regression test.
 
 ## Quick start
 
@@ -191,23 +195,24 @@ pip install -e ".[dev,viz]"       # add ",rl" for PPO training (PyTorch, Stable-
 pytest -m "not slow" -n auto      # about 200 tests
 python experiments/01_validate_suspension.py
 python experiments/03_controller_benchmark.py --n 10 --tag smoke --controllers pure_pursuit apf dwa
-python scripts/render_demo.py --controller dwa --family kerb --seed 1003 --name kerb_dwa
-python scripts/render_compare.py --seed 5010 --controllers dwa mppi ppo --ppo-path models/ppo_selected --name hero
+python scripts/render_showcase.py --quality draft          # the cinematic film, 720p30 (needs a GPU with OpenGL)
 ```
 
-Everything runs on CPU. A GPU is not required and is not used.
+Simulation, training and every experiment run on CPU; a GPU is not needed and is not used for them. A GPU is
+used only to draw the cinematic film and stills (`docs/RENDERING.md`); `scripts/render_demo.py` and
+`scripts/render_compare.py` draw quick classic-renderer previews without one.
 
 ## Repository layout
 
 ```
-src/aedrover/   sim  nav  control  learning  drone  clinical  analysis  geo
+src/aedrover/   sim  nav  control  learning  drone  clinical  analysis  geo  viz (optional cinematic renderer)
 experiments/    01 validation  02 kerb map  03 benchmark  05 clinical  06 co-design
 configs/        vehicle and lookup-table configs (vehicle_optimized.yaml is the co-designed rover)
 models/         the pretrained PPO policy behind every PPO number (2.4 MB, see models/README.md)
 results/        small committed summaries (CSV and JSON); large artifacts are git-ignored
 docs/           ENGINEERING_NOTES, CLINICAL_MODEL, DRONE_COMPARATOR, REFERENCES (all DOIs verified)
-scripts/        verify_citations.py  render_demo.py  build_curb_table.py
-tests/          physics, metrics, sensors, environment, safety filter, MPPI, statistics, clinical
+scripts/        verify_citations.py  render_showcase.py  render_demo.py  build_curb_table.py
+tests/          physics, metrics, sensors, environment, safety filter, MPPI, statistics, clinical, renderer
 ```
 
 ## References

@@ -49,7 +49,7 @@ kerb comparison in the film is the same scene three times.
   the model but are shrunk to a point in the render copy.
 * **People.** Low-poly pedestrians made of mocap limb segments. Heading comes from the smoothed recorded velocity and
   stride phase from the distance walked, so feet do not slide and a standing pedestrian stands.
-* **Data overlays.** A cyan trail of the rover's actual upcoming path (works for every controller), a lidar
+* **Data overlays.** (MPPI's rollout shot draws 24 of the 128 sampled rollouts per plan, spread over the cost ranking.) A cyan trail of the rover's actual upcoming path (works for every controller), a lidar
   bubble that dents inward where something is detected, MPPI's 24 sampled rollouts coloured by cost rank with the
   best one highlighted, and a halo that turns green, amber or red with the live payload shock.
 
