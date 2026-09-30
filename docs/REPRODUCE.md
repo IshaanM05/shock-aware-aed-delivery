@@ -31,12 +31,20 @@ python scripts/verify_citations.py           # every DOI resolves and its title 
 
 `scripts/run_pipeline.py` is resumable (a step is skipped when its output exists; `--force` re-runs it):
 
-1. `select_ppo` picks the PPO checkpoint on validation seeds (50000+).
-2. `tune_mppi` selects MPPI settings on tuning seeds (30000+) and freezes them in `configs/mppi_tuned.json`.
-3. `benchmark` runs pure pursuit, potential field, dynamic window, MPPI and PPO on 100 paired seeds (5000+) per family.
-4. `ood` evaluates the same controllers inside and outside the training distribution (seeds 20000+).
-5. `ablations` covers vehicle design, safety filter and speed cap (seeds 40000+).
-6. `clinical` composes the simulated segments into routes and evaluates survival.
+1. `select_ppo` picks the PPO checkpoint on validation seeds (50000+). (Skip this and training by using the
+   published policy: pass `--ppo-path models/ppo_selected` to the experiments.)
+2. `tune_mppi` selects MPPI settings on tuning seeds (30000+) and freezes them in `configs/mppi_tuned.json`
+   (about 75 min).
+3. `benchmark` runs pure pursuit, potential field, dynamic window and PPO on 100 paired seeds (5000+) per family and
+   MPPI on the first 50 of them, 2,250 episodes in all (63 min).
+4. `ood` evaluates dynamic window, MPPI and PPO inside and outside the training distribution, seeds 20000+, 1,000
+   episodes (47 min).
+5. `ablations` covers vehicle design, safety filter and speed cap, seeds 40000+, 1,040 episodes (72 min).
+6. `clinical` composes the simulated segments into routes and evaluates survival (under a minute).
+
+MPPI gets half the seeds (`--mppi-fraction`, default 0.5) because one MPPI episode costs about 100 times a
+classical one; the paired tests use only the seeds two controllers share. The four stages after tuning took
+183 minutes in one run on the reference machine.
 
 Evaluation, tuning, validation and ablation seed ranges are disjoint by construction, so nothing is tuned
 on evaluation data.

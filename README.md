@@ -9,7 +9,11 @@ ambulance and drone delivery.
 > Status: the standard experiment run is complete. Every number below is measured by code in this
 > repository and can be regenerated (`docs/REPRODUCE.md`). Not yet done: a paper draft and GPU-scale training.
 
-![Rover crossing a 13.5 cm kerb (MuJoCo render; draft vehicle, DWA controller)](assets/kerb_dwa_stills.png)
+![Three controllers on the same kerb-and-crowd scenario (MuJoCo render)](assets/hero.gif)
+
+*One scenario, not a statistic (mixed kerb and crowd, seed 5010, [full-quality video](assets/hero.mp4)). The
+dynamic-window planner arrives but peaks at 3.1 g against the 3 g payload budget; MPPI peaks at 1.6 g and PPO at
+1.8 g, and PPO arrives first. The statistics are in the benchmark below.*
 
 ![System overview](docs/figures/architecture.png)
 

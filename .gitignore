@@ -32,6 +32,7 @@ tmp/
 # run logs
 results/_*.log
 
-# draft GIFs are large; the README GIF is regenerated compactly at release time
+# draft GIFs are large; only the compact README hero GIF is committed
 assets/*.gif
+!assets/hero.gif
 results/_*.log
