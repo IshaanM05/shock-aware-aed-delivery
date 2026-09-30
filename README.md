@@ -1,6 +1,6 @@
-# GoldenMinute
+# Shock-Aware Sidewalk AED Delivery
 
-**Shock-aware autonomous sidewalk AED delivery in MuJoCo.** A four-wheel rover that carries an
+**Payload-shock-constrained autonomous AED delivery in MuJoCo.** A four-wheel rover that carries an
 automated external defibrillator (AED) to a cardiac-arrest patient, studied end to end: the
 mechanical design that lets it cross kerbs without damaging its payload, physics-in-the-loop MPC
 and learned policies against classical navigation, and a clinical break-even analysis against

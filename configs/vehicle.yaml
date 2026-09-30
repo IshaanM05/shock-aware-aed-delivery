@@ -1,4 +1,4 @@
-# Nominal GoldenMinute rover vehicle (also the defaults of aedrover.sim.VehicleParams).
+# Nominal rover vehicle (also the defaults of aedrover.sim.VehicleParams).
 # Units: SI (m, kg, s, rad). Frame: x forward, y left, z up (REP-103).
 chassis_mass: 22.0
 payload_mass: 4.0
