@@ -48,6 +48,7 @@ CONDITIONS = {
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=50)
+    ap.add_argument("--n-mppi", type=int, default=None)
     ap.add_argument("--seed0", type=int, default=20000)
     ap.add_argument("--tag", default="smoke")
     ap.add_argument("--controllers", nargs="+", default=["dwa", "ppo"])
@@ -66,7 +67,7 @@ def main() -> None:
         sk = tuple(sorted(kw.items()))
         for name, ck in specs:
             for fam in args.families:
-                for seed in range(args.seed0, args.seed0 + args.n):
+                for seed in range(args.seed0, args.seed0 + (args.n_mppi if name == "mppi" and args.n_mppi else args.n)):
                     jobs.append(Job(name, fam, seed, controller_kwargs=tuple(sorted(ck.items())),
                                     env_kwargs=env_kwargs, scenario_kwargs=sk, tag=cond))
     jobs.sort(key=lambda j: j.controller != "mppi")

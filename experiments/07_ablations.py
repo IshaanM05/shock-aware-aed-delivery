@@ -40,7 +40,7 @@ def spec(name: str, cap: float, ppo_path: str) -> tuple[str, dict]:
     return controller_spec(name, cap, **extra)
 
 
-def build_jobs(ablation: str, controllers, n: int, seed0: int, ppo_path: str) -> list[Job]:
+def build_jobs(ablation: str, controllers, n: int, seed0: int, ppo_path: str, n_mppi: int | None = None) -> list[Job]:
     jobs: list[Job] = []
     seeds = range(seed0, seed0 + n)
     if ablation == "vehicle":
@@ -76,6 +76,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ablations", nargs="+", default=["vehicle", "shield", "speed_cap"])
     ap.add_argument("--n", type=int, default=40)
+    ap.add_argument("--n-mppi", type=int, default=None)
     ap.add_argument("--seed0", type=int, default=40000)
     ap.add_argument("--tag", default="smoke")
     ap.add_argument("--controllers", nargs="+", default=["dwa", "ppo"])
@@ -86,6 +87,8 @@ def main() -> None:
     (ROOT / "results").mkdir(exist_ok=True)
     for ab in args.ablations:
         jobs = build_jobs(ab, args.controllers, args.n, args.seed0, args.ppo_path)
+        if args.n_mppi is not None:
+            jobs = [j for j in jobs if j.controller != "mppi" or j.seed < args.seed0 + args.n_mppi]
         jobs.sort(key=lambda j: j.controller != "mppi")
         print(f"[{ab}] {len(jobs)} episodes on {args.workers or default_workers()} workers")
         t0 = time.perf_counter()

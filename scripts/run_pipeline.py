@@ -27,12 +27,12 @@ def steps(a: argparse.Namespace) -> list[tuple[str, list[str], str]]:
     return [
         ("select_ppo", [PY, "scripts/select_ppo.py", "--n", str(a.n_select)], "checkpoints/ppo_selected/selection.json"),
         ("tune_mppi", [PY, "experiments/tune_mppi.py", "--n", str(a.n_tune)], "configs/mppi_tuned.json"),
-        ("benchmark", [PY, "experiments/03_controller_benchmark.py", "--n", str(a.n_bench), "--seed0", "5000", "--tag", tag,
+        ("benchmark", [PY, "experiments/03_controller_benchmark.py", "--n", str(a.n_bench), "--seed0", "5000", "--n-mppi", str(max(1, int(a.n_bench * a.mppi_fraction))), "--tag", tag,
                        "--controllers", "pure_pursuit", "apf", "dwa", "mppi", "ppo", "--ppo-path", "checkpoints/ppo_selected"],
          f"results/benchmark_{tag}.csv"),
-        ("ood", [PY, "experiments/04_ood_generalization.py", "--n", str(a.n_ood), "--tag", tag, "--controllers", "dwa", "mppi",
+        ("ood", [PY, "experiments/04_ood_generalization.py", "--n", str(a.n_ood), "--n-mppi", str(max(1, int(a.n_ood * a.mppi_fraction))), "--tag", tag, "--controllers", "dwa", "mppi",
                  "ppo", "--ppo-path", "checkpoints/ppo_selected"], f"results/ood_{tag}.csv"),
-        ("ablations", [PY, "experiments/07_ablations.py", "--n", str(a.n_abl), "--tag", tag, "--controllers", "dwa", "mppi",
+        ("ablations", [PY, "experiments/07_ablations.py", "--n", str(a.n_abl), "--n-mppi", str(max(1, int(a.n_abl * a.mppi_fraction))), "--tag", tag, "--controllers", "dwa", "mppi",
                        "ppo", "--ppo-path", "checkpoints/ppo_selected"], f"results/ablation_speed_cap_{tag}.csv"),
         ("clinical", [PY, "experiments/05_clinical_analysis.py", "--bench", f"results/benchmark_{tag}.csv", "--controllers",
                       "dwa", "mppi", "ppo"], "results/clinical.json"),
@@ -49,6 +49,7 @@ def main() -> None:
     ap.add_argument("--n-bench", type=int, default=100)
     ap.add_argument("--n-ood", type=int, default=50)
     ap.add_argument("--n-abl", type=int, default=40)
+    ap.add_argument("--mppi-fraction", type=float, default=0.5, help="MPPI gets this fraction of the seeds (it is ~100x costlier)")
     a = ap.parse_args()
     (ROOT / "runs").mkdir(exist_ok=True)
     t_all = time.perf_counter()

@@ -48,6 +48,7 @@ def summarise(df: pd.DataFrame) -> pd.DataFrame:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=10, help="episodes per controller x family")
+    ap.add_argument("--n-mppi", type=int, default=None, help="MPPI episodes per family (first seeds only; default: n)")
     ap.add_argument("--seed0", type=int, default=1000)
     ap.add_argument("--tag", default="smoke")
     ap.add_argument("--controllers", nargs="+", default=["pure_pursuit", "apf_nocurb", "apf"])
@@ -70,6 +71,8 @@ def main() -> None:
     jobs = make_jobs(specs, args.families, range(args.seed0, args.seed0 + args.n),
                      shield=not args.no_shield, tag=args.tag,
                      env_kwargs=(("veh", VehicleParams.by_name(args.vehicle)),))
+    if args.n_mppi is not None:      # MPPI is ~100x costlier: fewer seeds, still paired on the shared ones
+        jobs = [j for j in jobs if j.controller != "mppi" or j.seed < args.seed0 + args.n_mppi]
     jobs.sort(key=lambda j: j.controller != "mppi")            # slow MPPI episodes first: better load balance
     print(f"{len(jobs)} episodes on {args.workers or default_workers()} workers")
     t0 = time.perf_counter()

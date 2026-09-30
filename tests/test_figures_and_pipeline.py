@@ -78,7 +78,7 @@ def test_pipeline_steps_reference_real_scripts_with_unique_markers():
     mod = importlib.util.module_from_spec(spec)
     sys.modules["run_pipeline"] = mod
     spec.loader.exec_module(mod)
-    args = argparse.Namespace(tag="standard", n_select=1, n_tune=1, n_bench=1, n_ood=1, n_abl=1)
+    args = argparse.Namespace(tag="standard", n_select=1, n_tune=1, n_bench=1, n_ood=1, n_abl=1, mppi_fraction=0.5)
     steps = mod.steps(args)
     markers = [m for _, _, m in steps]
     assert len(set(markers)) == len(markers)
