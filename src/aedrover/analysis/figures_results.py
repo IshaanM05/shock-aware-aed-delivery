@@ -247,6 +247,6 @@ def fig_architecture(out: Path) -> Path:
     ax.annotate("", xy=(1.4, top + h_top), xytext=(9.8, top + h_top),
                 arrowprops=dict(arrowstyle="-|>", color=INK2, lw=1.4, connectionstyle="arc3,rad=0.16"))
     ax.text(5.6, 4.36, "filtered command (speed, steering) -> wheel and steering actuators", fontsize=8, color=INK2, ha="center")
-    ax.text(0.1, 5.02, "AED-Rover system overview", fontsize=11.5, fontweight="semibold", color=INK, va="bottom")
+    ax.text(0.1, 5.02, "GoldenMinute system overview", fontsize=11.5, fontweight="semibold", color=INK, va="bottom")
     _ = AXIS
     return _save(fig, out)
