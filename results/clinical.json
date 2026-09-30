@@ -1,0 +1,160 @@
+{
+  "geometry": {
+    "route_factor": 1.5352000000000001,
+    "densities": {
+      "osm_lower_bound": 0.23841574902190843,
+      "assumed_2_per_km": 2.0,
+      "assumed_4_per_km": 4.0,
+      "assumed_8_per_km": 8.0
+    },
+    "source": "OpenStreetMap (Vile Parle, 2 km disc)"
+  },
+  "controllers": {},
+  "radii_m": [
+    250,
+    500,
+    750,
+    1000,
+    1500,
+    2000,
+    3000
+  ],
+  "breakeven": {
+    "dwa|larsen1993": {
+      "speed_mps": 1.9695131214696686,
+      "radius_m": 584.7935934594632,
+      "flag": "crossing",
+      "ambulance_survival": 0.22994512290167382
+    },
+    "dwa|rule_of_thumb": {
+      "speed_mps": 1.9695131214696686,
+      "radius_m": 315.5502007782437,
+      "flag": "crossing",
+      "ambulance_survival": 0.024048595512545595
+    },
+    "mppi|larsen1993": {
+      "speed_mps": 1.532602634032754,
+      "radius_m": 455.06485431925324,
+      "flag": "crossing",
+      "ambulance_survival": 0.22994512290167382
+    },
+    "mppi|rule_of_thumb": {
+      "speed_mps": 1.532602634032754,
+      "radius_m": 245.5495541565238,
+      "flag": "crossing",
+      "ambulance_survival": 0.024048595512545595
+    },
+    "ppo|larsen1993": {
+      "speed_mps": 1.966784553027762,
+      "radius_m": 583.9834189413308,
+      "flag": "crossing",
+      "ambulance_survival": 0.22994512290167382
+    },
+    "ppo|rule_of_thumb": {
+      "speed_mps": 1.966784553027762,
+      "radius_m": 315.113036734859,
+      "flag": "crossing",
+      "ambulance_survival": 0.024048595512545595
+    }
+  },
+  "tornado": [
+    {
+      "parameter": "radius_m",
+      "low": 250.0,
+      "high": 2000.0,
+      "gain_at_low": 0.05282047993899061,
+      "gain_at_high": 0.0,
+      "gain_base": 0.004405475738154141,
+      "swing": 0.05282047993899061
+    },
+    {
+      "parameter": "rover_speed_mps",
+      "low": 1.0,
+      "high": 3.0,
+      "gain_at_low": 0.0,
+      "gain_at_high": 0.01763332502419651,
+      "gain_base": 0.004405475738154141,
+      "swing": 0.01763332502419651
+    },
+    {
+      "parameter": "route_factor",
+      "low": 1.1,
+      "high": 1.6,
+      "gain_at_low": 0.009105990837299627,
+      "gain_at_high": 0.0007500362488208345,
+      "gain_base": 0.004405475738154141,
+      "swing": 0.008355954588478792
+    },
+    {
+      "parameter": "dispatch.ems_arrival_to_shock_min",
+      "low": 0.0,
+      "high": 3.0,
+      "gain_at_low": 0.004405475738154141,
+      "gain_at_high": 0.012539600192910838,
+      "gain_base": 0.004405475738154141,
+      "swing": 0.008134124454756697
+    },
+    {
+      "parameter": "dispatch.call_to_alert_min",
+      "low": 0.5,
+      "high": 3.0,
+      "gain_at_low": 0.006969241533906323,
+      "gain_at_high": 0.0017968578076331676,
+      "gain_base": 0.004405475738154141,
+      "swing": 0.005172383726273155
+    },
+    {
+      "parameter": "dispatch.bystander_cpr_delay_min",
+      "low": 1.0,
+      "high": 6.0,
+      "gain_at_low": 0.006143789823809198,
+      "gain_at_high": 0.0016609829950849364,
+      "gain_base": 0.004405475738154141,
+      "swing": 0.004482806828724262
+    },
+    {
+      "parameter": "ems_median_min",
+      "low": 10.0,
+      "high": 14.8,
+      "gain_at_low": 0.004405475738154141,
+      "gain_at_high": 0.00823761116889124,
+      "gain_base": 0.004405475738154141,
+      "swing": 0.003832135430737099
+    },
+    {
+      "parameter": "dispatch.handoff_min",
+      "low": 0.5,
+      "high": 2.5,
+      "gain_at_low": 0.005596464214572772,
+      "gain_at_high": 0.0017968578076331676,
+      "gain_base": 0.004405475738154141,
+      "swing": 0.003799606406939604
+    },
+    {
+      "parameter": "dispatch.collapse_to_call_min",
+      "low": 0.5,
+      "high": 3.0,
+      "gain_at_low": 0.0050327377047219846,
+      "gain_at_high": 0.001847319120667934,
+      "gain_base": 0.004405475738154141,
+      "swing": 0.0031854185840540505
+    },
+    {
+      "parameter": "busy_increase",
+      "low": 0.0,
+      "high": 0.2,
+      "gain_at_low": 0.004405475738154141,
+      "gain_at_high": 0.004998757872902715,
+      "gain_base": 0.004405475738154141,
+      "swing": 0.0005932821347485739
+    }
+  ],
+  "economics": {
+    "kappa": 0.22,
+    "meets_target": true,
+    "payback_months": 9.23076923076923,
+    "delta_fte": 0.5,
+    "qaly_per_encounter_at_1km": 0.002399710153175377,
+    "note": "every ratio is an ASSUMPTION (dimensionless); see docs/CLINICAL_MODEL.md"
+  }
+}
