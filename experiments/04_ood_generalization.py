@@ -17,6 +17,7 @@ the budget) with Wilson intervals.
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -29,6 +30,12 @@ from aedrover.parallel import default_workers, pmap
 from aedrover.sim.vehicle_mjcf import VehicleParams
 
 ROOT = Path(__file__).resolve().parents[1]
+
+def tuned_mppi() -> dict:
+    """Frozen MPPI settings selected on tuning seeds (configs/mppi_tuned.json), if the tuning was run."""
+    path = ROOT / "configs" / "mppi_tuned.json"
+    return json.loads(path.read_text(encoding="utf-8"))["kwargs"] if path.exists() else {}
+
 
 CONDITIONS = {
     "id": {"kerb_range": (0.06, 0.16), "mu_range": (0.5, 1.2)},
@@ -52,7 +59,7 @@ def main() -> None:
     args = ap.parse_args()
 
     env_kwargs = (("veh", VehicleParams.by_name(args.vehicle)),)
-    specs = [controller_spec(c, args.speed_cap, **({"path": args.ppo_path} if c == "ppo" else {}))
+    specs = [controller_spec(c, args.speed_cap, **({"path": args.ppo_path} if c == "ppo" else tuned_mppi() if c == "mppi" else {}))
              for c in args.controllers]
     jobs = []
     for cond, kw in CONDITIONS.items():

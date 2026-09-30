@@ -11,6 +11,8 @@ ambulance and drone delivery.
 
 ![Rover crossing a 13.5 cm kerb (MuJoCo render; draft vehicle, DWA controller)](assets/kerb_dwa_stills.png)
 
+![System overview](docs/figures/architecture.png)
+
 ## The question
 
 Sudden cardiac arrest survival falls steeply with every minute before the first shock, and
@@ -59,9 +61,16 @@ kerb negotiator, at a median payload shock of 2.4 g. Reactive planners struggle 
 pedestrian streams, which is exactly where the sampling-based and learned controllers are being
 compared.
 
-**Pending**: the full controller benchmark (N = 100 per controller and scenario family with
-paired tests), MPPI and PPO results, the out-of-distribution study, and the clinical analysis
-with real Mumbai route geometry from OpenStreetMap.
+**A learned policy trains on a laptop CPU.** PPO with domain randomisation (24 environments, 12 million
+decisions, 69 minutes, `docs/PPO_TRAINING.md`) reaches the goal in 82.5% of 200 held-out episodes versus 69.0% for
+the dynamic-window planner on the same seeds (paired exact McNemar, Holm-adjusted p = 0.007), and is faster. That
+timing gap is partly a speed-cap effect (the policy may command 2.6 m/s, the planner cruises at 1.8 m/s), so the
+main benchmark below gives every controller the same cap. Switching the safety filter off barely changes the
+policy's results, so it is not leaning on the filter.
+
+**Pending**: the full controller benchmark with equal speed caps (100 paired episodes per controller and scenario
+family), MPPI and the second PPO seed in that benchmark, the out-of-distribution study, ablations, and the clinical
+analysis. The real Mumbai route geometry from OpenStreetMap is already in (`docs/OSM_ROUTES.md`, data under `data/osm`).
 
 ## How it works
 
@@ -82,6 +91,19 @@ with real Mumbai route geometry from OpenStreetMap.
 * **Statistics** (`src/aedrover/analysis`): Welch and paired t tests with degrees of freedom and
   exact p, Cohen's d with confidence intervals, Wilson intervals, exact McNemar for paired success,
   Wilcoxon and Mann-Whitney companions, and Holm correction.
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [`docs/METHODS.md`](docs/METHODS.md) | the model, controllers, metrics and clinical layer exactly as implemented |
+| [`docs/VALIDATION.md`](docs/VALIDATION.md) | physics validation against closed-form mechanics (generated from results) |
+| [`docs/RESULTS.md`](docs/RESULTS.md) | generated tables, figures and paired statistics (appears once the pipeline has run) |
+| [`docs/PPO_TRAINING.md`](docs/PPO_TRAINING.md) | learning curve and held-out evaluation, regenerated automatically |
+| [`docs/REPRODUCE.md`](docs/REPRODUCE.md) | every command in order, run times and seed ranges |
+| [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) | what the study supports and what it does not |
+| [`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) | 14 silent MuJoCo pitfalls, each with a regression test |
+| [`docs/NMIMS_EXPORT.md`](docs/NMIMS_EXPORT.md) | generating the course-template folder from this repository |
 
 ## Engineering notes worth reading
 
