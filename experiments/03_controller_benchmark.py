@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from aedrover.analysis.experiments import make_jobs, run_job
+from aedrover.analysis.experiments import controller_spec, make_jobs, run_job
 from aedrover.parallel import default_workers, pmap
 from aedrover.sim.scenario import FAMILIES
 from aedrover.sim.vehicle_mjcf import VehicleParams
@@ -48,17 +48,29 @@ def main() -> None:
     ap.add_argument("--no-shield", action="store_true")
     ap.add_argument("--vehicle", choices=("nominal", "optimized"), default="optimized")
     ap.add_argument("--workers", type=int, default=None)
+    ap.add_argument("--speed-cap", type=float, default=2.0, help="top speed [m/s] given to EVERY controller")
+    ap.add_argument("--ppo-path", default="checkpoints/ppo_shielded")
+    ap.add_argument("--mppi-samples", type=int, default=128)
+    ap.add_argument("--mppi-horizon", type=int, default=20)
     args = ap.parse_args()
 
-    jobs = make_jobs(args.controllers, args.families, range(args.seed0, args.seed0 + args.n),
+    specs = []
+    for name in args.controllers:
+        extra = {"path": args.ppo_path} if name == "ppo" else {}
+        if name == "mppi":
+            extra = {"K": args.mppi_samples, "H": args.mppi_horizon}
+        specs.append(controller_spec(name, args.speed_cap, **extra))
+    jobs = make_jobs(specs, args.families, range(args.seed0, args.seed0 + args.n),
                      shield=not args.no_shield, tag=args.tag,
                      env_kwargs=(("veh", VehicleParams.by_name(args.vehicle)),))
+    jobs.sort(key=lambda j: j.controller != "mppi")            # slow MPPI episodes first: better load balance
     print(f"{len(jobs)} episodes on {args.workers or default_workers()} workers")
     t0 = time.perf_counter()
     rows = pmap(run_job, jobs, workers=args.workers, chunksize=4, desc="bench")
     wall = time.perf_counter() - t0
     df = pd.DataFrame(rows)
     df["vehicle"] = args.vehicle
+    df["speed_cap"] = args.speed_cap
     sim_s = df.time_s.sum()
     print(f"done in {wall:.0f}s wall; {sim_s:.0f}s simulated ({sim_s / wall:.0f}x real time)")
     (ROOT / "results").mkdir(exist_ok=True)

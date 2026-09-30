@@ -21,7 +21,8 @@ class PPOController:
         self.name = name
         root = Path(path)
         self.model = PPO.load(str(root / weights), device="cpu")
-        with open(root / "vecnormalize.pkl", "rb") as fh:
+        stats = root / "vecnormalize.pkl" if weights == "final" else root / (weights.replace("ppo_", "ppo_vecnormalize_", 1) + ".pkl")
+        with open(stats, "rb") as fh:
             vn = pickle.load(fh)
         self.mean, self.var = vn.obs_rms.mean.astype(np.float64), vn.obs_rms.var.astype(np.float64)
         self.eps, self.clip = vn.epsilon, vn.clip_obs

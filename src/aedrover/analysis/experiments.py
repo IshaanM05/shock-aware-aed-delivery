@@ -61,3 +61,18 @@ def make_jobs(controllers, families, seeds, **kw) -> list[Job]:
             for s in seeds:
                 jobs.append(Job(name, f, s, controller_kwargs=tuple(sorted(kwargs.items())), **kw))
     return jobs
+
+
+# keyword each controller uses for its top speed, so one number sets the same cap for every method
+SPEED_KEY = {"pure_pursuit": "v_cruise", "apf": "v_cruise", "apf_nocurb": "v_cruise", "dwa": "v_cruise",
+             "dwa_nocurb": "v_cruise", "mppi": "v_max", "ppo": "v_max"}
+
+
+def controller_spec(name: str, speed_cap: float | None = None, **extra) -> tuple[str, dict]:
+    """(name, kwargs) with the common speed cap applied. ``extra`` passes controller-specific settings."""
+    kw = dict(extra)
+    if speed_cap is not None and name in SPEED_KEY:
+        kw[SPEED_KEY[name]] = float(speed_cap)
+    if name == "ppo":
+        kw.setdefault("path", "checkpoints/ppo_shielded")
+    return name, kw
