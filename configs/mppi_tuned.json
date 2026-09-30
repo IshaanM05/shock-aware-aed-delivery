@@ -1,0 +1,21 @@
+{
+  "variant": "shock_x2.5",
+  "kwargs": {
+    "w_shock": 10.0
+  },
+  "tuning_seeds": [
+    30000,
+    30019
+  ],
+  "families": [
+    "kerb",
+    "mixed",
+    "crowded"
+  ],
+  "score": {
+    "safe": 0.85,
+    "success": 0.85,
+    "collision": 0.0,
+    "time_med": 28.54
+  }
+}
