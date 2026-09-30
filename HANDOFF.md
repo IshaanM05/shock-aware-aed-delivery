@@ -28,8 +28,8 @@ Public repo: https://github.com/IshaanM05/shock-aware-aed-delivery (branch `main
    `scripts/make_osm_doc.py`, README numbers, `scripts/export_nmims.py`) would make every row reproducible. Ask the
    project owner before doing it: it moves every published number slightly.
 2. **Constraints that must hold.**
-   * No mention of any AI assistant, its vendor, or co-author trailers in commits, PR text or repo files.
-     Check: `git log --format=%B | grep -ci "claude\|anthropic\|co-authored"` prints 0.
+   * No mention of any AI assistant, its vendor, or co-author trailers in commits, PR text or repo files. Before pushing,
+     read `git log --format=%B` and confirm no commit carries such a line.
    * Never commit to or push to the NMIMS course repo, and never `git add -A` there, without the owner's explicit go-ahead.
    * The standard environment, its seeds and `results/` are the benchmark. New work must not change them (prove it
      with a test, see section 6).
