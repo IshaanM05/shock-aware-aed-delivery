@@ -99,11 +99,11 @@ class Grade:
     haze_strength: float = 0.85            # cap on the haze blend
     bloom_threshold: float = 0.70
     bloom_strength: float = 0.30
-    contrast: float = 1.10
-    saturation: float = 1.10
+    contrast: float = 1.20
+    saturation: float = 1.22
     warm: float = 0.050                    # split tone: highlights toward orange
     cool: float = 0.040                    # split tone: shadows toward blue
-    vignette: float = 0.32
+    vignette: float = 0.38
     grain: float = 0.012
 
 
@@ -160,6 +160,32 @@ def haze(img: np.ndarray, dist_low: np.ndarray, look: Look, pose: CameraPose, g:
     return cv2.add(keep, add)
 
 
+def _blend(a: np.ndarray, b: np.ndarray, w8: np.ndarray) -> np.ndarray:
+    """``a * (1 - w) + b * w`` for uint8 images and a uint8 single-channel weight, in saturating integer math."""
+    w3 = cv2.merge([w8, w8, w8])
+    return cv2.add(cv2.multiply(a, cv2.bitwise_not(w3), scale=1 / 255.0), cv2.multiply(b, w3, scale=1 / 255.0))
+
+
+def depth_of_field(img: np.ndarray, dist_low: np.ndarray, focus_m: float, strength: float = 0.35) -> np.ndarray:
+    """Blur by distance from the focal plane: sharp at ``focus_m``, creamy far away and very close.
+
+    ``strength`` scales the circle of confusion (0.35 is a subtle portrait-lens look). Two blur layers are
+    blended by a mask computed at reduced resolution.
+    """
+    h, w = img.shape[:2]
+    d = np.maximum(dist_low, 0.3)
+    coc = np.clip(np.abs(1.0 / d - 1.0 / focus_m) * focus_m * strength, 0.0, 1.0)
+    coc = np.where(dist_low >= 1e3, min(strength * 2.0, 1.0), coc)                  # sky: as blurred as the far distance
+    coc = blur(coc.astype(np.float32), 1.5)
+    m1 = resize(np.clip(coc * 2.0, 0.0, 1.0), (w, h))
+    m2 = resize(np.clip(coc * 2.0 - 1.0, 0.0, 1.0), (w, h))
+    m1_8 = (m1 * 255 + 0.5).astype(np.uint8)
+    m2_8 = (m2 * 255 + 0.5).astype(np.uint8)
+    soft = cv2.GaussianBlur(img, (0, 0), 2.6)
+    wide = resize(cv2.GaussianBlur(resize(img, (w // 2, h // 2), area=True), (0, 0), 5.5), (w, h))
+    return _blend(_blend(img, soft, m1_8), wide, m2_8)
+
+
 def bloom(img: np.ndarray, g: Grade) -> np.ndarray:
     """Soft glow from bright pixels (lamps, lit windows, emissive overlays, the sun)."""
     h, w = img.shape[:2]
@@ -180,12 +206,14 @@ def grade_colour(img: np.ndarray, g: Grade) -> np.ndarray:
 
 
 def finish(frame: np.ndarray, *, look: Look, pose: CameraPose, dist_low: np.ndarray | None = None,
-           grade: Grade | None = None, seed: int = 0) -> np.ndarray:
+           grade: Grade | None = None, seed: int = 0, focus_m: float | None = None, dof: float = 0.0) -> np.ndarray:
     """The full finishing chain on an (H, W, 3) uint8 RGB frame; returns uint8."""
     g = grade or Grade()
     img = np.ascontiguousarray(frame)
     if dist_low is not None:
         img = haze(img, dist_low, look, pose, g)
+        if dof > 0 and focus_m:
+            img = depth_of_field(img, dist_low, focus_m, dof)
     img = bloom(img, g)
     img = grade_colour(img, g)
     h, w = img.shape[:2]

@@ -33,6 +33,7 @@ _COUNTER = itertools.count()
 DEPTH_NEAR = 0.5
 DEPTH_LOW = 4               # the depth pass is drawn at 1/4 resolution (it only drives smooth haze)
 _DECODER = None              # measured once per process
+_CALIBRATING = False
 
 
 def filament_importable() -> bool:
@@ -76,6 +77,10 @@ class FilamentBackend:
                  reflections: bool = True, post: bool = True, depth: bool = False) -> None:
         s = _Session.get()
         mjrf, r = s.mjrf, s.renderer
+        if depth and _DECODER is None and not _CALIBRATING:
+            # The depth material is shared between models: calibrating (which builds and destroys small models)
+            # after a scene has done a depth pass would destroy it under that scene's renderables and abort.
+            self.depth_decoder()
         self.model, self.size, self._s = model, size, s
         k = next(_COUNTER)
         self._scene, self._view, self._target = f"scn{k}", f"v{k}", f"out{k}"
@@ -122,9 +127,10 @@ class FilamentBackend:
         """
         from .post import DepthDecoder
 
-        global _DECODER
+        global _DECODER, _CALIBRATING
         if _DECODER is not None:
             return _DECODER
+        _CALIBRATING = True
         dists = np.geomspace(0.6, 300.0, 34)
         vals = []
         for dist in dists:
@@ -140,6 +146,7 @@ class FilamentBackend:
             finally:
                 b.close()
         _DECODER = DepthDecoder(dists, np.array(vals))
+        _CALIBRATING = False
         return _DECODER
 
     def depth(self, data: mujoco.MjData, pose: CameraPose) -> np.ndarray:
@@ -171,6 +178,7 @@ class FilamentBackend:
 
     def close(self) -> None:
         r = self._s.renderer
+        self._depth_entries = None        # its render request holds a reference to the scene
         for d, names in ((r._views, (self._view, self._dview)), (r._reads, (self._target, self._dtarget)),
                          (r._targets, (self._target, self._dtarget))):
             for n in names:

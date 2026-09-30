@@ -151,6 +151,77 @@ def sky_faces(look: Look, n: int = 768) -> dict[str, bytes]:
 
 
 # ------------------------------------------------------------------------------ surface materials
+SHOP_TEXTS = ("CHEMIST", "TEA & SNACKS", "BOOKS", "GROCERY", "TAILOR", "CAFE", "MOBILES", "STATIONERY", "BAKERY", "FRUIT", "SALON", "HARDWARE")
+SIGN_COLOURS = ((150, 28, 30), (20, 82, 130), (28, 104, 64), (200, 120, 20), (90, 40, 110), (30, 30, 34), (170, 150, 30))
+
+
+def _font(size: int):
+    from PIL import ImageFont
+    for name in ("segoeuib.ttf", "arialbd.ttf", "DejaVuSans-Bold.ttf"):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+@lru_cache(maxsize=2)
+def shopfront_maps(n: int = 8, w: int = 1024, h: int = 400, seed: int = 41) -> dict[str, bytes]:
+    """``n`` shopfront textures (albedo + emissive): a signboard with text above a lit glass front and a door.
+
+    Some shops are shuttered (corrugated grey, unlit). Text is generic English, no brands.
+    """
+    from PIL import Image, ImageDraw
+    rng = np.random.default_rng(seed)
+    out: dict[str, bytes] = {}
+    for k in range(n):
+        alb = Image.new("RGB", (w, h), tuple(int(c) for c in rng.integers(205, 235, size=3)))
+        emi = Image.new("RGB", (w, h), (0, 0, 0))
+        da, de = ImageDraw.Draw(alb), ImageDraw.Draw(emi)
+        sign_h = int(h * 0.26)
+        col = SIGN_COLOURS[int(rng.integers(len(SIGN_COLOURS)))]
+        da.rectangle([24, 14, w - 24, sign_h], fill=col)
+        de.rectangle([24, 14, w - 24, sign_h], fill=tuple(int(c * 0.35) for c in col))
+        text = SHOP_TEXTS[int(rng.integers(len(SHOP_TEXTS)))]
+        font = _font(int(sign_h * 0.62))
+        tw = da.textlength(text, font=font)
+        pos = ((w - tw) / 2, 14 + (sign_h - 14) / 2 - sign_h * 0.34)
+        da.text(pos, text, font=font, fill=(250, 246, 238))
+        de.text(pos, text, font=font, fill=(255, 244, 214))
+        gy0, gy1 = sign_h + 26, h - 12
+        if rng.random() < 0.22:                                        # shuttered: corrugated steel, unlit
+            for x in range(40, w - 40, 14):
+                shade = 150 + int(30 * np.sin(x * 0.7))
+                da.rectangle([x, gy0, x + 10, gy1], fill=(shade, shade, shade + 6))
+        else:
+            da.rectangle([40, gy0, w - 40, gy1], fill=(16, 20, 24))
+            for y in range(gy0, gy1):                                  # faint warm wash, stronger near the ceiling lights
+                t = (y - gy0) / max(gy1 - gy0, 1)
+                de.line([(44, y), (w - 44, y)], fill=(int(120 - 70 * t), int(80 - 48 * t), int(40 - 24 * t)))
+            rows = 4
+            for r in range(rows):                                      # shelves: a bright edge and small coloured goods
+                ry = gy0 + 26 + r * (gy1 - gy0 - 60) // rows
+                de.rectangle([50, ry + 30, w - 50, ry + 34], fill=(255, 226, 170))
+                x = 56
+                while x < w - 90:
+                    bw = int(rng.integers(14, 44))
+                    col = (int(rng.integers(120, 255)), int(rng.integers(70, 210)), int(rng.integers(30, 160)))
+                    de.rectangle([x, ry + 30 - int(rng.integers(14, 28)), x + bw, ry + 29], fill=col)
+                    x += bw + int(rng.integers(3, 16))
+            for lx in range(120, w - 120, 210):                        # ceiling strip lights
+                de.rectangle([lx, gy0 + 4, lx + 110, gy0 + 12], fill=(255, 246, 226))
+            door_x = int(rng.integers(w // 3, 2 * w // 3))
+            da.rectangle([door_x - 50, gy0, door_x + 50, gy1], fill=(14, 16, 18))
+            de.rectangle([door_x - 44, gy0 + 6, door_x + 44, gy1], fill=(200, 140, 80))
+            for fx in range(40, w - 40, 170):                          # steel mullions
+                da.rectangle([fx, gy0, fx + 7, gy1], fill=(40, 40, 44))
+                de.rectangle([fx, gy0, fx + 7, gy1], fill=(0, 0, 0))
+        out[f"shop{k}_albedo.png"] = png_bytes(np.asarray(alb))
+        out[f"shop{k}_emissive.png"] = png_bytes(np.asarray(emi))
+    return out
+
+
+@lru_cache(maxsize=4)
 def facade_maps(size: int = 1024, seed: int = 31, bays: int = 4, floors: int = 4, lit_fraction: float = 0.38) -> dict[str, bytes]:
     """A tile of building facade (``bays`` x ``floors`` windows) as albedo, normal, ORM and emissive maps.
 
@@ -200,6 +271,7 @@ def facade_maps(size: int = 1024, seed: int = 31, bays: int = 4, floors: int = 4
             "facade_orm.png": png_bytes(orm), "facade_emissive.png": png_bytes(srgb_encode(emis))}
 
 
+@lru_cache(maxsize=4)
 def asphalt_maps(size: int = 1024, seed: int = 11) -> dict[str, bytes]:
     """Dark asphalt with aggregate speckle and patchy wetness: albedo, normal and ORM maps."""
     speck = fbm_tile(size, 64, 3, seed)
@@ -214,6 +286,7 @@ def asphalt_maps(size: int = 1024, seed: int = 11) -> dict[str, bytes]:
             "asphalt_orm.png": png_bytes(orm)}
 
 
+@lru_cache(maxsize=4)
 def paving_maps(size: int = 1024, seed: int = 21, tiles: int = 4) -> dict[str, bytes]:
     """Sandstone paving slabs with grout lines: albedo, normal and ORM maps (``tiles`` x ``tiles`` per image)."""
     px = size // tiles

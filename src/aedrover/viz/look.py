@@ -24,8 +24,8 @@ class Look:
     sun_azimuth_deg: float = 4.0
     sun_elevation_deg: float = 15.0
     sun_color: tuple[float, float, float] = (1.0, 0.72, 0.46)
-    sun_lux: float = 60000.0
-    ibl_intensity: float = 25000.0
+    sun_lux: float = 56000.0
+    ibl_intensity: float = 14000.0
     # sky (linear RGB)
     sky_zenith: tuple[float, float, float] = (0.07, 0.17, 0.44)
     sky_horizon: tuple[float, float, float] = (1.0, 0.52, 0.24)

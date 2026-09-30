@@ -26,8 +26,8 @@ FACADE_TILE_M = 12.0       # one facade texture covers 4 bays x 4 floors = 12 m 
 # tints multiplied into the facade albedo: cream, terracotta, pale blue, sand, sage, grey
 FACADE_TINTS = ((1.0, 0.93, 0.80), (0.95, 0.72, 0.60), (0.80, 0.86, 0.92), (0.96, 0.86, 0.68),
                 (0.78, 0.86, 0.74), (0.86, 0.85, 0.84))
-CAR_COLOURS = ((0.92, 0.92, 0.90), (0.72, 0.74, 0.78), (0.10, 0.16, 0.30), (0.45, 0.08, 0.10), (0.25, 0.27, 0.29),
-               (0.85, 0.72, 0.30))
+CAR_COLOURS = ((0.92, 0.92, 0.90), (0.72, 0.74, 0.78), (0.18, 0.34, 0.62), (0.70, 0.12, 0.12), (0.45, 0.47, 0.50),
+               (0.95, 0.76, 0.12), (0.95, 0.76, 0.12), (0.30, 0.55, 0.40))
 
 
 def _v(*xs: float) -> str:
@@ -89,8 +89,11 @@ def dress_scene(rx: RenderXml, rec: Recording, look: Look, overlays=None) -> lis
         ranges = [(STREET_X0, sc["x_down"] - 1.0), (sc["x_up"] + 1.0, x_end)]
     else:
         ranges = [(STREET_X0, x_end)]
-    _buildings(rx, ranges, rng, mats)
+    placed = _buildings(rx, ranges, rng, mats)
+    _shopfronts(rx, placed, rng, mats)
+    _facade_details(rx, placed, rng, mats)
     _street_furniture(rx, ranges, rng, mats)
+    _street_life(rx, ranges, rng, mats)
     if sc["has_kerb"]:
         _road_paint(rx, sc, mats)
         _parked_cars(rx, sc, rng, mats)
@@ -155,9 +158,10 @@ def _facade_materials(rx: RenderXml, mats: Materials) -> list[str]:
     return names
 
 
-def _buildings(rx: RenderXml, ranges, rng: np.random.Generator, mats: Materials) -> None:
+def _buildings(rx: RenderXml, ranges, rng: np.random.Generator, mats: Materials) -> list[dict]:
     facades = _facade_materials(rx, mats)
     roof = mats("roof", (0.22, 0.21, 0.21), roughness=0.95)
+    placed: list[dict] = []
     for side in (-1.0, 1.0):
         for x0, x1 in ranges:
             x = x0
@@ -170,7 +174,117 @@ def _buildings(rx: RenderXml, ranges, rng: np.random.Generator, mats: Materials)
                 mat = facades[int(rng.integers(len(facades)))]
                 rx.world_xml.append(geom("box", (cx, cy, height / 2), (w / 2, depth / 2, height / 2), mat))
                 rx.world_xml.append(geom("box", (cx, cy, height + 0.12), (w / 2 + 0.15, depth / 2 + 0.15, 0.12), roof))
+                placed.append({"side": side, "x": cx, "w": w, "h": height, "depth": depth})
                 x += w + float(rng.uniform(0.0, 0.6))                 # mostly continuous frontage
+    return placed
+
+
+# ---------------------------------------------------------------------- shops and facade details
+AWNING_PAIRS = (((0.78, 0.12, 0.10), (0.94, 0.92, 0.86)), ((0.10, 0.45, 0.25), (0.95, 0.93, 0.82)),
+                ((0.12, 0.30, 0.62), (0.95, 0.95, 0.92)), ((0.92, 0.50, 0.08), (0.96, 0.92, 0.80)),
+                ((0.95, 0.78, 0.15), (0.30, 0.22, 0.14)))
+
+
+def _shopfronts(rx: RenderXml, placed: list[dict], rng: np.random.Generator, mats: Materials) -> None:
+    """A lit shop front, signboard and striped awning on the street face of every building."""
+    n_tex = 8
+    rx.files.update(A.shopfront_maps(n_tex))
+    for k in range(n_tex):
+        rx.asset_xml += [f'<texture name="t_shop{k}_a" type="2d" file="shop{k}_albedo.png"/>',
+                         f'<texture name="t_shop{k}_e" type="2d" file="shop{k}_emissive.png"/>',
+                         f'<material name="shop_{k}" texrepeat="1 1" texuniform="false" metallic="0" roughness="0.6" emission="1.0">'
+                         f'<layer texture="t_shop{k}_a" role="rgb"/><layer texture="t_shop{k}_e" role="emissive"/></material>']
+    awn = [(mats(f"awn_a{i}", (*a, 1.0), roughness=0.85), mats(f"awn_b{i}", (*b, 1.0), roughness=0.85))
+           for i, (a, b) in enumerate(AWNING_PAIRS)]
+    for b in placed:
+        side, x, w = b["side"], b["x"], b["w"]
+        face_y = side * BUILDING_FRONT_Y
+        shop_w = min(w - 0.6, 9.0)
+        mat = f"shop_{int(rng.integers(n_tex))}"
+        yaw = 0.0 if side > 0 else math.pi                       # the textured face must look at the street
+        rx.world_xml.append(geom("box", (x, face_y - side * 0.05, 1.75), (shop_w / 2, 0.05, 1.75), mat, euler=(0.0, 0.0, yaw)))
+        pair = awn[int(rng.integers(len(awn)))]
+        n_st = max(int(shop_w / 0.5), 4)
+        sw = shop_w / n_st
+        tilt = math.radians(17.0)
+        for i in range(n_st):
+            cx = x - shop_w / 2 + sw * (i + 0.5)
+            rx.world_xml.append(geom("box", (cx, face_y - side * 0.62, 3.41), (sw / 2, 0.66, 0.025),
+                                     pair[i % 2], euler=(side * tilt, 0.0, 0.0)))
+        rx.world_xml.append(geom("box", (x, face_y - side * 1.18, 3.05), (shop_w / 2, 0.02, 0.10), pair[0]))
+
+
+def _facade_details(rx: RenderXml, placed: list[dict], rng: np.random.Generator, mats: Materials) -> None:
+    """Balconies, air-conditioner boxes and rooftop water tanks: the clutter that makes a facade read as lived in."""
+    slab = mats("balcony_slab", (0.62, 0.60, 0.56), roughness=0.9)
+    rail = mats("balcony_rail", (0.10, 0.10, 0.11), metallic=0.6, roughness=0.5)
+    ac = mats("ac_unit", (0.86, 0.86, 0.84), roughness=0.55)
+    vent = mats("ac_vent", (0.12, 0.12, 0.13), roughness=0.7)
+    tank = mats("water_tank", (0.04, 0.05, 0.06), roughness=0.6)
+    for b in placed:
+        side, x, w, h = b["side"], b["x"], b["w"], b["h"]
+        face_y = side * BUILDING_FRONT_Y
+        for fl in range(2, int(h // 3.0)):                                  # above the shop level
+            z = fl * 3.0 + 0.5
+            if rng.random() < 0.55:
+                bx = x + float(rng.uniform(-w / 2 + 1.4, w / 2 - 1.4))
+                rx.world_xml.append(geom("box", (bx, face_y - side * 0.65, z), (1.05, 0.65, 0.07), slab))
+                rx.world_xml.append(geom("box", (bx, face_y - side * 1.27, z + 0.5), (1.05, 0.02, 0.5), rail))
+            if rng.random() < 0.35:
+                ax = x + float(rng.uniform(-w / 2 + 1.0, w / 2 - 1.0))
+                rx.world_xml.append(geom("box", (ax, face_y - side * 0.25, z + 1.3), (0.45, 0.25, 0.3), ac))
+                rx.world_xml.append(geom("cylinder", (ax, face_y - side * 0.51, z + 1.3), (0.22, 0.01), vent,
+                                         euler=(math.pi / 2, 0.0, 0.0)))
+        if rng.random() < 0.6:
+            for _ in range(int(rng.integers(1, 3))):
+                tx = x + float(rng.uniform(-w / 2 + 1.5, w / 2 - 1.5))
+                ty = side * (BUILDING_FRONT_Y + b["depth"] * float(rng.uniform(0.3, 0.7)))
+                rx.world_xml.append(geom("cylinder", (tx, ty, h + 0.84), (0.62, 0.6), tank))
+
+
+def _motorbike(rx: RenderXml, x: float, y: float, yaw_deg: float, colour, mats: Materials, tag: str) -> None:
+    body = mats(f"bike_{tag}", (*colour, 1.0), metallic=0.4, roughness=0.4)
+    dark = mats("bike_dark", (0.05, 0.05, 0.055), roughness=0.7)
+    chrome = mats("bike_chrome", (0.78, 0.79, 0.82), metallic=1.0, roughness=0.2)
+    c, s = math.cos(math.radians(yaw_deg)), math.sin(math.radians(yaw_deg))
+
+    def at(lx: float, ly: float, lz: float) -> tuple[float, float, float]:
+        return (x + c * lx - s * ly, y + s * lx + c * ly, lz)
+
+    q = (math.cos(math.radians(yaw_deg) / 2), 0.0, 0.0, math.sin(math.radians(yaw_deg) / 2))
+    parts = [("box", at(0.0, 0, 0.55), (0.42, 0.11, 0.10), body), ("box", at(-0.16, 0, 0.72), (0.30, 0.10, 0.045), dark),
+             ("box", at(0.36, 0, 0.74), (0.05, 0.22, 0.02), chrome), ("box", at(0.50, 0, 0.93), (0.02, 0.09, 0.07), body),
+             ("box", at(0.30, 0, 0.66), (0.03, 0.05, 0.22), chrome)]
+    for kind, pos, size, m in parts:
+        rx.world_xml.append(geom(kind, pos, size, m, quat=q))
+    for lx in (0.62, -0.62):
+        rx.world_xml.append(geom("cylinder", at(lx, 0, 0.29), (0.29, 0.05), dark, euler=(math.pi / 2, 0.0, math.radians(yaw_deg))))
+
+
+def _street_life(rx: RenderXml, ranges, rng: np.random.Generator, mats: Materials) -> None:
+    """Parked two-wheelers and a few street stalls with umbrellas along the pavement edge."""
+    colours = ((0.75, 0.10, 0.10), (0.12, 0.25, 0.55), (0.85, 0.85, 0.82), (0.15, 0.15, 0.17), (0.80, 0.55, 0.10))
+    cart = mats("stall_cart", (0.55, 0.30, 0.14), roughness=0.85)
+    pole = mats("stall_pole", (0.6, 0.6, 0.62), metallic=0.8, roughness=0.4)
+    umb = [mats(f"umbrella_{i}", (*c, 1.0), roughness=0.9)
+           for i, c in enumerate(((0.9, 0.25, 0.12), (0.15, 0.55, 0.3), (0.95, 0.75, 0.1), (0.2, 0.35, 0.75)))]
+    k = 0
+    for x0, x1 in ranges:
+        for side in (-1.0, 1.0):
+            x = x0 + 4.0
+            while x < x1 - 3.0:
+                x += float(rng.uniform(4.5, 9.0))
+                if x >= x1 - 3.0:
+                    break
+                if rng.random() < 0.65:
+                    for j in range(int(rng.integers(1, 4))):
+                        _motorbike(rx, x + 0.75 * j, side * float(rng.uniform(4.15, 4.45)), 0.0 if rng.random() < 0.5 else 180.0,
+                                   colours[int(rng.integers(len(colours)))], mats, f"{k}")
+                        k += 1
+                elif rng.random() < 0.5:
+                    y = side * 4.15
+                    rx.world_xml += [geom("box", (x, y, 0.45), (0.7, 0.4, 0.45), cart), geom("cylinder", (x, y, 1.4), (0.02, 1.0), pole),
+                                     geom("cylinder", (x, y, 2.35), (1.15, 0.03), umb[int(rng.integers(len(umb)))])]
 
 
 # -------------------------------------------------------------------------- lamps and trees

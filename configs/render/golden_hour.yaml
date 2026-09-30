@@ -4,8 +4,8 @@ name: golden_hour
 sun_azimuth_deg: 4.0         # from +x (the rover's heading): the sun sits low at the far end of the street
 sun_elevation_deg: 15.0      # low sun: long shadows, warm backlight, rim light on everything that moves
 sun_color: [1.0, 0.72, 0.46]
-sun_lux: 60000.0
-ibl_intensity: 25000.0
+sun_lux: 56000.0
+ibl_intensity: 14000.0
 sky_zenith: [0.07, 0.17, 0.44]
 sky_horizon: [1.0, 0.52, 0.24]
 sky_glow: [1.0, 0.46, 0.16]

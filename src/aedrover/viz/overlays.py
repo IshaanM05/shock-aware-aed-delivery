@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import mujoco
 import numpy as np
-from scipy.ndimage import maximum_filter1d, uniform_filter1d
+from scipy.ndimage import uniform_filter1d
 
 from .dressing import Materials, geom
 from .recording import Recording
@@ -89,7 +89,7 @@ def dress_overlays(rx: RenderXml, rec: Recording, cfg: OverlayConfig, mats: Mate
         mats.neon("ov_halo_mid", (1.0, 0.55, 0.05), 3.4)
         mats.neon("ov_halo_hot", (1.0, 0.07, 0.05), 4.2)
         for lvl, name in enumerate(("ok", "mid", "hot")):
-            pool(f"h{lvl}", cfg.halo_beads, 0.03, lambda i, name=name: f"ov_halo_{name}")
+            pool(f"h{lvl}", cfg.halo_beads, 0.022, lambda i, name=name: f"ov_halo_{name}")
     return OverlayAnimator(cfg, pools)
 
 
@@ -112,8 +112,9 @@ class OverlayAnimator:
         self._path = uniform_filter1d(xy, size=5, axis=0, mode="nearest")
         self._seglen = np.r_[0.0, np.linalg.norm(np.diff(self._path, axis=0), axis=1)]
         self._cum = np.cumsum(self._seglen)
-        win = max(int(0.4 / rec.dt), 1)
-        self._shock = maximum_filter1d(rec.shock_g, size=win, mode="nearest")
+        win = max(int(0.4 / rec.dt), 1)                        # causal: the last 0.4 s, never the future
+        pad = np.r_[np.full(win - 1, rec.shock_g[0]), rec.shock_g]
+        self._shock = np.max(np.lib.stride_tricks.sliding_window_view(pad, win), axis=1)
         self._roll_keys = np.array(sorted(rec.rollouts)) if rec.rollouts else np.array([], dtype=int)
         self._lidar_range = float(rec.meta.get("lidar_range", 8.0))
         self._budget = float(rec.meta.get("budget_g", 3.0))

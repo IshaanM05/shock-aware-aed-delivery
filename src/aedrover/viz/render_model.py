@@ -195,7 +195,8 @@ class RenderScene:
         self.set_state(s)
         return self.backend.render(self.data, pose)
 
-    def render_finished(self, s: float, pose: CameraPose, grade=None, seed: int = 0) -> np.ndarray:
+    def render_finished(self, s: float, pose: CameraPose, grade=None, seed: int = 0, dof: float = 0.0,
+                        focus: float | None = None) -> np.ndarray:
         """A frame with haze (from depth), bloom, grade, vignette and grain applied (needs a depth-capable backend)."""
         from . import post
 
@@ -205,7 +206,10 @@ class RenderScene:
         if getattr(self.backend, "has_depth", False):
             raw = self.backend.depth(self.data, pose)
             dist_low = post.low_distance(pose, self.size, raw, self.backend.depth_decoder())
-        return post.finish(frame, look=self.look, pose=pose, dist_low=dist_low, grade=grade, seed=seed)
+        if dof > 0 and focus is None:
+            rp, _ = self.rover_pose(s)
+            focus = float(np.linalg.norm(np.asarray(pose.pos) - rp))
+        return post.finish(frame, look=self.look, pose=pose, dist_low=dist_low, grade=grade, seed=seed, focus_m=focus, dof=dof)
 
     def close(self) -> None:
         self.backend.close()
