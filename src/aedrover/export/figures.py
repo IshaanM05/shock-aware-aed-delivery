@@ -323,8 +323,8 @@ def make_figure3(bench_csv: str | Path, out_path: str | Path, facts: dict | None
             p, a, b = wilson(int(sub["success"].sum()), len(sub))
             xs.append(i + (j - (n_c - 1) / 2) * width)
             ps.append(100 * p)
-            lo.append(100 * (p - a) if not math.isnan(p) else 0.0)
-            hi.append(100 * (b - p) if not math.isnan(p) else 0.0)
+            lo.append(max(0.0, 100 * (p - a)) if not math.isnan(p) else 0.0)     # rounding can leave -1e-14
+            hi.append(max(0.0, 100 * (b - p)) if not math.isnan(p) else 0.0)
         axa.bar(xs, ps, width=width * 0.86, color=col, hatch=hatch, edgecolor=SURFACE, linewidth=0.0,
                 label=CONTROLLER_LABEL.get(c, c), zorder=3)
         axa.errorbar(xs, ps, yerr=[lo, hi], fmt="none", ecolor=INK, elinewidth=0.9, capsize=1.6,

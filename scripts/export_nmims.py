@@ -48,7 +48,7 @@ EXPECTED_FILES = (
     "models/aed_delivery_amr.xml", "models/.gitkeep", "src/test_env.py", "src/aed_navigation_controller.py",
     "src/aedrover/__init__.py", "analytics/cardiac_survival_economics.py", "analytics/generate_paper_figures.py",
     "analytics/aed_delivery_benchmark.csv", "analytics/kerb_crossing_telemetry.csv", "analytics/.gitkeep",
-    "configs/vehicle.yaml", "configs/vehicle_optimized.yaml", "configs/curb_table.json",
+    "configs/vehicle.yaml", "configs/vehicle_optimized.yaml", "configs/curb_table.json", "configs/mppi_tuned.json",
 )
 LINKEDIN_IMG = r"\[!\[Watch Video Demonstration on LinkedIn\]\([^\)]+\)\]\([^\)]+\)"
 LINKEDIN_TXT = r"\* \*\*Video Demonstration:\*\* \[Watch 60-Second Walkthrough on LinkedIn\]\([^\)]+\)"
@@ -182,7 +182,7 @@ def write_static(target: Path, res: E.Results, facts: dict, xml: str) -> None:
         write_text(target / keep, "")
     write_text(target / "models" / "aed_delivery_amr.xml", xml)
     vendor_package(target / "src" / "aedrover")
-    for name in ("vehicle.yaml", "vehicle_optimized.yaml", "curb_table.json"):
+    for name in ("vehicle.yaml", "vehicle_optimized.yaml", "curb_table.json", "mppi_tuned.json"):
         copy_normalised(REPO / "configs" / name, target / "configs" / name)
     text = res.benchmark_path.read_text(encoding="utf-8").replace("\r\n", "\n")
     write_text(target / "analytics" / "aed_delivery_benchmark.csv", text)
@@ -222,7 +222,8 @@ def make_telemetry(target: Path, res: E.Results, report: Report) -> dict:
             f"(benchmark {row['outcome']}), time {t_s:.2f} s (benchmark {float(row['time_s']):.2f} s), episode peak shock "
             f"{peak:.2f} g (benchmark {float(row['peak_shock_g']):.2f} g). "
             + ("The replay reproduces the benchmark row." if same else
-               "The replay DIFFERS from the benchmark row: the simulator changed after the benchmark was run; re-run the benchmark."))
+               "The replay DIFFERS from the benchmark row: the exported entry point or its settings no longer match "
+               "the benchmark run (speed cap, vehicle, controller settings) or the simulator changed; re-run the benchmark."))
     if not same:
         res.warnings.append("telemetry replay differs from its benchmark row: " + note)
     kerb_h = float(tel["kerb_h_m"].iloc[0])
@@ -479,7 +480,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     nmims = Path(args.nmims_repo)
-    out_root = Path(args.out)
+    out_root = Path(args.out).resolve()        # the checks below run scripts with cwd inside the export
     report = Report()
     try:
         if args.apply and args.allow_partial:

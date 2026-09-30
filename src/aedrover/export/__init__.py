@@ -120,6 +120,9 @@ CLINICAL_MODE_COLUMNS = ("mode", "model", "n", "mean_survival", "survival_ci_low
                          "abs_gain", "abs_gain_ci_low", "abs_gain_ci_high", "p_faster",
                          "median_saving_when_faster_min")
 ECONOMICS_KEYS = ("kappa", "payback_months", "delta_fte", "meets_kappa_target")
+# The operating point the exported document reports: the best controller at a radius inside its break-even
+# range, with an assumed urban crossing density (the OSM-tagged value is a lower bound; see docs/OSM_ROUTES.md).
+NATIVE_CLINICAL = {"controller": "ppo", "density": "assumed_4_per_km", "radius_m": 500, "model": "larsen1993"}
 
 CLINICAL_SCHEMA_HELP = (
     "expected results/clinical*.json = {\n"
@@ -274,6 +277,9 @@ def _need_columns(df: pd.DataFrame, cols, where: str, hint: str) -> None:
 def _load_validation(rd: Path, res: Results) -> None:
     hint = "run: python experiments/01_validate_suspension.py"
     path = rd / "validation_suspension.json"
+    if not path.exists() and (rd / "validation_optimized.json").exists():
+        # experiment 01 writes one file per design; the exported model is the co-designed vehicle
+        path = rd / "validation_optimized.json"
     d = _read_json(path, hint)
     _need_keys(d, ("vehicle", "static", "tyre", "ringdown", "rolling", "soak"), path.name, hint)
     _need_keys(d["static"], ("ride_height_m", "ride_height_expected_m", "ride_height_err_mm",
@@ -391,10 +397,47 @@ def find_clinical(rd: Path, override: Path | None = None) -> Path:
     return cands[-1]
 
 
+def _native_clinical(rd: Path, d: dict, res: Results) -> dict:
+    """Map the pipeline's own outputs of experiments/05 onto the layout the templates read.
+
+    ``clinical.json`` keeps one break-even per (controller, model) and no per-mode table; the per-mode
+    survival rows live in ``clinical_survival_vs_radius.csv``. The exported document reports one
+    declared operating point (``NATIVE_CLINICAL``), and records it as the scenario so the text says so.
+    """
+    hint = "run: python experiments/05_clinical_analysis.py"
+    sel = NATIVE_CLINICAL
+    csv = _need_file(rd / "clinical_survival_vs_radius.csv", hint)
+    s = pd.read_csv(csv)
+    _need_columns(s, ("controller", "density", "radius_m") + CLINICAL_MODE_COLUMNS, csv.name, hint)
+    rows = s[(s["controller"] == sel["controller"]) & (s["density"] == sel["density"])
+             & (s["radius_m"] == sel["radius_m"])]
+    if rows.empty:
+        raise MissingResult(f"{csv.name} has no rows for {sel}; {hint}")
+    modes = [{c: r[c].item() if hasattr(r[c], "item") else r[c] for c in CLINICAL_MODE_COLUMNS}
+             for _, r in rows.iterrows()]
+    _need_keys(d, ("breakeven", "economics", "geometry"), "clinical.json", hint)
+    key = f"{sel['controller']}|{sel['model']}"
+    if key not in d["breakeven"]:
+        raise MissingResult(f"clinical.json[breakeven] lacks {key!r} (found {sorted(d['breakeven'])}); {hint}")
+    econ = dict(d["economics"])
+    econ["meets_kappa_target"] = econ.get("meets_kappa_target", econ.get("meets_target"))
+    res.sources.append(Source("clinical survival by mode", csv, sha12(csv),
+                              f"{len(modes)} rows at {sel['radius_m']} m, controller {sel['controller']}"))
+    return {
+        "model": sel["model"], "parallel": True,
+        "scenario": {"rover_controller": sel["controller"], "response_radius_m": sel["radius_m"],
+                     "crossings_per_km_ASSUMED": d["geometry"]["densities"][sel["density"]],
+                     "route_factor": round(d["geometry"]["route_factor"], 2)},
+        "modes": modes, "breakeven": dict(d["breakeven"][key]), "economics": econ,
+    }
+
+
 def _load_clinical(rd: Path, res: Results, override: Path | None) -> None:
     hint = CLINICAL_SCHEMA_HELP
     path = find_clinical(rd, override)
     d = _read_json(path, hint)
+    if "modes" not in d:
+        d = _native_clinical(rd, d, res)
     _need_keys(d, ("modes", "breakeven", "economics"), path.name, hint)
     if not isinstance(d["modes"], list) or not d["modes"]:
         raise MissingResult(f"{path.name}: 'modes' must be a non-empty list; {hint}")
@@ -465,7 +508,8 @@ def load_results(results_dir: Path, *, allow_partial: bool = False, benchmark: P
                               + "\n  - ".join(f"{n}: {e}" for n, e in missing)
                               + "\nUse --allow-partial to export with PENDING markers.")
         res.pending.extend(f"{n}: {e.short}" for n, e in missing)
-    stale = staleness(res, VehicleParams().to_dict(), VehicleParams.optimized())
+    design = (res.validation or {}).get("vehicle", {}).get("name", "nominal")
+    stale = staleness(res, VehicleParams.by_name(design).to_dict(), VehicleParams.optimized())
     if stale:
         if allow_partial or accept_stale:
             res.warnings.extend(stale)
