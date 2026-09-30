@@ -30,6 +30,9 @@ import numpy as np
 from .camera import CameraPose
 
 _COUNTER = itertools.count()
+DEPTH_NEAR = 0.5
+DEPTH_LOW = 4               # the depth pass is drawn at 1/4 resolution (it only drives smooth haze)
+_DECODER = None              # measured once per process
 
 
 def filament_importable() -> bool:
@@ -91,7 +94,8 @@ class FilamentBackend:
         if depth:
             # Filament reads back one target per render call, so the depth view lives outside the active
             # dictionaries and is swapped in for its own pass (see ``depth``).
-            r.target(self._dtarget, size, mjrf.PixelFormat.PIXEL_FORMAT_R32F)
+            self.depth_size = (max(size[0] // DEPTH_LOW, 1), max(size[1] // DEPTH_LOW, 1))
+            r.target(self._dtarget, self.depth_size, mjrf.PixelFormat.PIXEL_FORMAT_R32F)
             r.view(self._dview, scene=self._scene, target=self._dtarget, draw_mode=mjrf.DrawMode.DRAW_MODE_DEPTH)
             self._depth_entries = (r._views.pop(self._dview), r._reads.pop(self._dtarget))
 
@@ -110,8 +114,39 @@ class FilamentBackend:
         r.render()
         return self._read(self._target, 3)
 
+    def depth_decoder(self):
+        """A table mapping this renderer's 8-bit depth values to metres, measured with flat walls.
+
+        The depth pass stores a non-linear, ``near``-dependent value (near 0.5 gives about 12 usable levels
+        between 24 and 48 m), so it is calibrated rather than assumed.
+        """
+        from .post import DepthDecoder
+
+        global _DECODER
+        if _DECODER is not None:
+            return _DECODER
+        dists = np.geomspace(0.6, 300.0, 34)
+        vals = []
+        for dist in dists:
+            xml = (f'<mujoco><visual><global offwidth="64" offheight="64"/></visual><asset><material name="f" rgba=".4 .4 .4 1"/></asset>'
+                   f'<worldbody><light dir="0 0 -1"/><geom type="box" pos="{dist} 0 1" size=".1 800 800" material="f"/></worldbody></mujoco>')
+            m = mujoco.MjModel.from_xml_string(xml)
+            d = mujoco.MjData(m)
+            mujoco.mj_forward(m, d)
+            b = FilamentBackend(m, (256, 256), depth=True)
+            try:
+                v = b.depth(d, CameraPose((0, 0, 1), (10, 0, 1), 55))
+                vals.append(float(v[v.shape[0] // 2, v.shape[1] // 2]))
+            finally:
+                b.close()
+        _DECODER = DepthDecoder(dists, np.array(vals))
+        return _DECODER
+
     def depth(self, data: mujoco.MjData, pose: CameraPose) -> np.ndarray:
-        """Depth image (float32, height x width) of the same view; needs ``depth=True``."""
+        """Raw depth image (float32, at ``depth_size``, 0..1) of the same view; needs ``depth=True``.
+
+        The camera near plane is 0.5 m for this pass (it sets the encoding); use ``depth_decoder``.
+        """
         if self._depth_entries is None:
             raise RuntimeError("backend was created without depth=True")
         r = self._s.renderer
@@ -121,7 +156,7 @@ class FilamentBackend:
         r._views[self._dview], r._reads[self._dtarget] = self._depth_entries
         try:
             self._update(data)
-            r.update_camera(self._dview, pose.to_gl())
+            r.update_camera(self._dview, pose.to_gl(near=DEPTH_NEAR))
             r.render()
             return self._read(self._dtarget, 1, np.float32)[..., 0]
         finally:

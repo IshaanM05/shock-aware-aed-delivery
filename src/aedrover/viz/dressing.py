@@ -57,13 +57,28 @@ class Materials:
         return name
 
 
+def _neon(self: Materials, name: str, rgb, strength: float = 2.0) -> str:
+    """A glowing material: near-black surface whose colour comes from an emissive texture (so lighting adds no white)."""
+    if name not in self._have:
+        self._have.add(name)
+        fname = f"em_{name}.png"
+        self.rx.files[fname] = A.png_bytes(np.tile(np.array(np.clip(rgb, 0, 1) * 255 + 0.5, np.uint8), (4, 4, 1)))
+        self.rx.asset_xml.append(f'<texture name="t_{name}" type="2d" file="{fname}"/>')
+        self.rx.asset_xml.append(f'<material name="{name}" rgba="0.02 0.02 0.02 1" roughness="0.6" metallic="0" emission="{strength}">'
+                                 f'<layer texture="t_{name}" role="emissive"/></material>')
+    return name
+
+
+Materials.neon = _neon
+
+
 def _scenario(rec: Recording) -> dict:
     sc = dict(rec.meta["scenario"])
     sc["has_kerb"] = sc["kerb_h"] > 1e-6
     return sc
 
 
-def dress_scene(rx: RenderXml, rec: Recording, look: Look) -> list:
+def dress_scene(rx: RenderXml, rec: Recording, look: Look, overlays=None) -> list:
     """Add the full street dressing to ``rx`` for the recorded scenario; returns the per-frame animators."""
     sc = _scenario(rec)
     mats = Materials(rx)
@@ -85,7 +100,11 @@ def dress_scene(rx: RenderXml, rec: Recording, look: Look) -> list:
     from .rover_visuals import dress_rover
     dress_rover(rx, VehicleParams.by_name(rec.meta["vehicle"]), mats)
     dress_obstacles(rx, mats)
-    return [dress_people(rx, rec, rng, mats)]
+    animators = [dress_people(rx, rec, rng, mats)]
+    if overlays is not None:
+        from .overlays import dress_overlays
+        animators.append(dress_overlays(rx, rec, overlays, mats))
+    return animators
 
 
 # ------------------------------------------------------------------------------------- pavement

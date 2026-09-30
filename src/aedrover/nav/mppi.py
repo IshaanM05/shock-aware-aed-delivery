@@ -52,6 +52,11 @@ _SPEC = mujoco.mjtState.mjSTATE_CTRL | mujoco.mjtState.mjSTATE_MOCAP_POS | mujoc
 
 
 class MPPIController:
+    # Optional debug capture for visualisation (src/aedrover/viz): when ``capture`` is on, every plan leaves
+    # a snapshot of the sampled rollouts in ``last_rollouts``. Off by default, and then it costs nothing.
+    capture: bool = False
+    last_rollouts: dict | None = None
+
     def __init__(self, K: int = 128, H: int = 20, dt_plan: float = 0.1, dt_phys: float = 0.01,
                  sigma_v: float = 0.5, sigma_d: float = 0.22, v_max: float = 2.6, delta_max: float = 0.5,
                  temperature: float = 0.3, replan_every: int = 5, nthread: int = 1,
@@ -170,6 +175,8 @@ class MPPIController:
         init = np.tile(x0, (K, 1))
         state, sens = rollout.rollout(self.model, self.datas, init, ctrl, control_spec=_SPEC)
         cost = self._cost(state, sens, cand, obs)
+        if self.capture:
+            self.last_rollouts = self._snapshot(state, cost, x0)
 
         w = np.exp(-(cost - cost.min()) / (self.temp * (cost.std() + 1e-6)))
         w /= w.sum()
@@ -180,6 +187,17 @@ class MPPIController:
         self._u_prev = np.array(cmd)
         self.last = {"cost_min": float(cost.min()), "cost_mean": float(cost.mean()), "n_eff": float(1.0 / np.sum(w**2))}
         return cmd
+
+    def _snapshot(self, state: np.ndarray, cost: np.ndarray, x0: np.ndarray, n_show: int = 24) -> dict:
+        """Chassis paths of ``n_show`` rollouts spread evenly over the cost ranking, cheapest first."""
+        order = np.argsort(cost)
+        pick = order[np.linspace(0, len(order) - 1, n_show).astype(int)]
+        idx = np.arange(self.n_sub - 1, self.H * self.n_sub, self.n_sub)[: self.H]
+        q = state[..., 1:1 + self.model.nq]
+        start = np.broadcast_to(x0[1:3], (len(pick), 1, 2))
+        xy = np.concatenate([start, q[pick][:, idx, :2]], axis=1).astype(np.float32)
+        best = np.concatenate([x0[None, 1:3], q[order[0]][idx, :2]], axis=0).astype(np.float32)
+        return {"xy": xy, "cost": cost[pick].astype(np.float32), "best": best}
 
     def _mocap_block(self, obs: dict, T: int) -> np.ndarray:
         """Mocap poses for every physics step of the rollout: static terrain/obstacles plus the
