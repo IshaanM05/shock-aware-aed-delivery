@@ -1,0 +1,13 @@
+{
+  "run": "ppo_shielded_s1",
+  "weights": "ppo_3499944_steps",
+  "n": 80,
+  "safe": 0.8625,
+  "success": 0.8875,
+  "collision": 0.0125,
+  "time_med": 16.499999999999737,
+  "validation_seeds": [
+    50000,
+    50019
+  ]
+}

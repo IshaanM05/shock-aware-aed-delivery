@@ -111,8 +111,10 @@ is noise and should not be read as an improvement. I did not investigate why PPO
   delivery (52% -> 44%) and PPO 4 (85% -> 81%), and MPPI none (68% both ways).
 * **The 0.8 m/s shared-zone cap in the course brief has a price.** PPO's median time grows 2.3x (22 s at 2.0 m/s to
   51 s at 0.8 m/s) and its safe delivery falls to 28% (75% at 2.6 m/s). Those failures are stalls and leaving the
-  sidewalk, not timeouts (the longest episode was 62 s of 90 s), and the policy was trained with a 2 m/s cap, so this is
-  PPO outside its training speed, not the limit of a policy trained for 0.8 m/s. MPPI is flat at 50-60% across caps and
+  sidewalk, not timeouts (the longest episode was 62 s of 90 s). The policy was trained with a 2.6 m/s top speed and every
+  cap is applied only as a clip on its commands at test time, so this shows PPO under a constraint it never saw in
+  training, not the limit of a policy trained for 0.8 m/s (it also explains why PPO is best at 2.6 m/s, its training
+  setting, and why the 2.0 m/s benchmark cap slightly handicaps it). MPPI is flat at 50-60% across caps and
   the dynamic window is flat to falling (35% at 0.8 m/s, 15% at 2.6 m/s). 40 episodes per cell (MPPI 20).
 
 ### Clinical break-even (RQ3, `experiments/05_clinical_analysis.py`)
@@ -186,6 +188,7 @@ pytest -m "not slow" -n auto      # about 200 tests
 python experiments/01_validate_suspension.py
 python experiments/03_controller_benchmark.py --n 10 --tag smoke --controllers pure_pursuit apf dwa
 python scripts/render_demo.py --controller dwa --family kerb --seed 1003 --name kerb_dwa
+python scripts/render_compare.py --seed 5010 --controllers dwa mppi ppo --ppo-path models/ppo_selected --name hero
 ```
 
 Everything runs on CPU. A GPU is not required and is not used.
@@ -196,6 +199,7 @@ Everything runs on CPU. A GPU is not required and is not used.
 src/aedrover/   sim  nav  control  learning  drone  clinical  analysis  geo
 experiments/    01 validation  02 kerb map  03 benchmark  05 clinical  06 co-design
 configs/        vehicle and lookup-table configs (vehicle_optimized.yaml is the co-designed rover)
+models/         the pretrained PPO policy behind every PPO number (2.4 MB, see models/README.md)
 results/        small committed summaries (CSV and JSON); large artifacts are git-ignored
 docs/           ENGINEERING_NOTES, CLINICAL_MODEL, DRONE_COMPARATOR, REFERENCES (all DOIs verified)
 scripts/        verify_citations.py  render_demo.py  build_curb_table.py
