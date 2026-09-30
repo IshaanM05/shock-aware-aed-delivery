@@ -48,6 +48,10 @@ def _load_builtin() -> None:
         from . import mppi  # noqa: F401
     except ImportError:
         pass
+    try:                                   # needs the optional [rl] extra (torch, stable-baselines3)
+        from ..learning import ppo_controller  # noqa: F401
+    except ImportError:
+        pass
 
 
 def run_episode(env, controller: Controller, shield=None, seed: int | None = None,

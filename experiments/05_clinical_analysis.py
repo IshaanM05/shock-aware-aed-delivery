@@ -26,7 +26,13 @@ import pandas as pd
 
 from aedrover.analysis.report import load_benchmark
 from aedrover.analysis.route_model import compose_routes, summary
-from aedrover.clinical.decision import ScenarioParams, breakeven_radius, mode_times, evaluate_modes, tornado
+from aedrover.clinical.decision import (
+    ScenarioParams,
+    breakeven_radius,
+    evaluate_modes,
+    mode_times,
+    tornado,
+)
 from aedrover.clinical.dispatch_policy import evaluate_policies
 from aedrover.clinical.economics import EconomicsInputs, qaly_gain_per_encounter
 from aedrover.clinical.survival import get_model
@@ -34,19 +40,26 @@ from aedrover.clinical.survival import get_model
 ROOT = Path(__file__).resolve().parents[1]
 RADII = (250, 500, 750, 1000, 1500, 2000, 3000)
 DEFAULT_ROUTE_FACTOR = 1.3        # ASSUMPTION unless data/osm/vile_parle_summary.json is present
-DEFAULT_CROSSINGS_PER_KM = 2.0    # ASSUMPTION unless data/osm/vile_parle_summary.json is present
+DEFAULT_CROSSINGS_PER_KM = 0.24   # lower bound; replaced by the OSM pooled estimate when available
 
 
 def route_geometry() -> dict:
-    """Route factor and crossings per km, from the OSM analysis if it exists, else labelled assumptions."""
+    """Walking route factor from the OSM analysis (median), plus the crossing-density sweep.
+
+    OpenStreetMap tags almost none of the crossings in this area (98 percent of road length has no
+    sidewalk tag, 24 crossing nodes in a 2 km disc), so the tagged density is only a LOWER BOUND.
+    The analysis therefore sweeps crossings per km from that bound up to assumed urban values.
+    """
     path = ROOT / "data" / "osm" / "vile_parle_summary.json"
+    densities = {"osm_lower_bound": DEFAULT_CROSSINGS_PER_KM, "assumed_2_per_km": 2.0,
+                 "assumed_4_per_km": 4.0, "assumed_8_per_km": 8.0}
     if path.exists():
         s = json.loads(path.read_text(encoding="utf-8"))
-        rf = s.get("walk_factor", {}).get("median")
-        cx = s.get("crossings_per_km_walk", {}).get("median")
-        if rf and cx is not None:
-            return {"route_factor": float(rf), "crossings_per_km": float(cx), "source": "OpenStreetMap (Vile Parle)"}
-    return {"route_factor": DEFAULT_ROUTE_FACTOR, "crossings_per_km": DEFAULT_CROSSINGS_PER_KM,
+        rf = s["routes"]["metrics"]["walk_factor"]["median"]
+        lb = s["routes"]["per_km"]["crossings_tagged"]["pooled"]
+        densities["osm_lower_bound"] = float(lb)
+        return {"route_factor": float(rf), "densities": densities, "source": "OpenStreetMap (Vile Parle, 2 km disc)"}
+    return {"route_factor": DEFAULT_ROUTE_FACTOR, "densities": densities,
             "source": "ASSUMPTION (no OSM summary found)"}
 
 
@@ -71,19 +84,22 @@ def main() -> None:
         if eps.empty:
             print(f"skip {ctrl}: no episodes")
             continue
-        for r in RADII:
-            dist = r * geo["route_factor"]
-            n_cross = int(round(geo["crossings_per_km"] * dist / 1000.0))
-            rs = compose_routes(eps, dist, n_cross, n=args.n_routes, seed=args.seed)
-            sm = summary(rs)
-            rows_route.append({"controller": ctrl, "radius_m": r, "route_m": dist, "crossings": n_cross, **sm})
-            params = ScenarioParams(radius_m=float(r), route_factor=geo["route_factor"])
-            for model in (larsen, rot):
-                rng = np.random.default_rng(args.seed)
-                samples = mode_times(args.n_routes, rng, params, parallel=True, rover_travel_min=rs.time_min)
-                ev = evaluate_modes(samples, model, seed=args.seed, n_resamples=500)
-                for _, row in ev.iterrows():
-                    rows_surv.append({"controller": ctrl, "radius_m": r, "model": model.name, **row.to_dict()})
+        for dens_name, dens in geo["densities"].items():
+            for r in RADII:
+                dist = r * geo["route_factor"]
+                n_cross = int(round(dens * dist / 1000.0))
+                rs = compose_routes(eps, dist, n_cross, n=args.n_routes, seed=args.seed)
+                sm = summary(rs)
+                rows_route.append({"controller": ctrl, "density": dens_name, "crossings_per_km": dens,
+                                   "radius_m": r, "route_m": dist, "crossings": n_cross, **sm})
+                params = ScenarioParams(radius_m=float(r), route_factor=geo["route_factor"])
+                for model in (larsen, rot):
+                    rng = np.random.default_rng(args.seed)
+                    samples = mode_times(args.n_routes, rng, params, parallel=True, rover_travel_min=rs.time_min)
+                    ev = evaluate_modes(samples, model, seed=args.seed, n_resamples=500)
+                    for _, row in ev.iterrows():
+                        rows_surv.append({"controller": ctrl, "density": dens_name, "radius_m": r,
+                                          "model": model.name, **row.to_dict()})
         print(f"{ctrl}: composed routes for {len(RADII)} radii")
 
     surv = pd.DataFrame(rows_surv)
@@ -119,7 +135,8 @@ def main() -> None:
             continue
         r = 1000
         dist = r * geo["route_factor"]
-        rs = compose_routes(eps, dist, int(round(geo["crossings_per_km"] * dist / 1000.0)), n=args.n_routes, seed=args.seed)
+        rs = compose_routes(eps, dist, int(round(geo["densities"]["assumed_4_per_km"] * dist / 1000.0)),
+                            n=args.n_routes, seed=args.seed)
         for pd_ in (0.0, 0.25, 0.5, 0.75, 1.0):
             ev = evaluate_policies(larsen, ScenarioParams(radius_m=float(r), route_factor=geo["route_factor"]),
                                    rover_travel_min=rs.time_min, p_drone=pd_, seed=args.seed, n_resamples=400)
@@ -130,14 +147,16 @@ def main() -> None:
 
     # dimensionless economics (all inputs are assumptions; reported with the course's kappa target)
     econ = EconomicsInputs()
-    best = surv[(surv.model == "larsen1993") & (surv.mode == "rover") & (surv.radius_m == 1000)]
+    best = surv[(surv.model == "larsen1993") & (surv["mode"] == "rover") & (surv.radius_m == 1000)
+                & (surv.density == "assumed_4_per_km")]
     dS = float(best.abs_gain.max()) if len(best) else float("nan")
     out["economics"] = {"kappa": econ.kappa, "meets_target": econ.meets_target, "payback_months": econ.payback_months,
                         "delta_fte": econ.delta_fte, "qaly_per_encounter_at_1km": float(qaly_gain_per_encounter(dS, 12.0, 0.85)) if np.isfinite(dS) else None,
                         "note": "every ratio is an ASSUMPTION (dimensionless); see docs/CLINICAL_MODEL.md"}
     (ROOT / args.out).write_text(json.dumps(out, indent=2, default=float), encoding="utf-8")
     pd.set_option("display.width", 200)
-    print(route.groupby(["controller", "radius_m"])[["p_arrive", "p_safe_delivery", "time_min_median"]].mean().round(3).to_string())
+    print(route.groupby(["controller", "density", "radius_m"])[["p_arrive", "p_safe_delivery", "time_min_median"]]
+          .mean().round(3).to_string())
     print("break-even:", json.dumps(be, indent=1, default=float))
     print("wrote", args.out)
 

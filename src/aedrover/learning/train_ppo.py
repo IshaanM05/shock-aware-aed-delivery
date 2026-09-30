@@ -58,6 +58,7 @@ def main() -> None:
     ap.add_argument("--torch-threads", type=int, default=4)
     ap.add_argument("--out", default="checkpoints/ppo_shielded")
     ap.add_argument("--resume", default=None)
+    ap.add_argument("--ckpt-every", type=int, default=500_000, help="checkpoint period in environment decisions")
     args = ap.parse_args()
 
     torch.set_num_threads(args.torch_threads)
@@ -75,7 +76,8 @@ def main() -> None:
                     gae_lambda=0.95, clip_range=0.2, ent_coef=0.003, vf_coef=0.5, max_grad_norm=0.5,
                     policy_kwargs=policy_kwargs, seed=args.seed, device="cpu",
                     tensorboard_log=str(out / "tb"), verbose=0)
-    ckpt = CheckpointCallback(save_freq=max(1_000_000 // args.n_envs, 1), save_path=str(out), name_prefix="ppo")
+    ckpt = CheckpointCallback(save_freq=max(args.ckpt_every // args.n_envs, 1), save_path=str(out), name_prefix="ppo",
+                              save_vecnormalize=True)      # normalisation stats are needed to evaluate a checkpoint
     t0 = time.perf_counter()
     model.learn(total_timesteps=args.steps, callback=[ProgressLog(), ckpt], reset_num_timesteps=not args.resume)
     model.save(out / "final")

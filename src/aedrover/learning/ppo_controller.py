@@ -14,8 +14,10 @@ from .rl_env import action_to_command
 class PPOController:
     def __init__(self, path: str = "checkpoints/ppo_shielded", weights: str = "final", v_max: float = 2.6,
                  deterministic: bool = True, name: str = "ppo"):
+        import torch
         from stable_baselines3 import PPO
 
+        torch.set_num_threads(1)          # evaluation workers run one process per core
         self.name = name
         root = Path(path)
         self.model = PPO.load(str(root / weights), device="cpu")

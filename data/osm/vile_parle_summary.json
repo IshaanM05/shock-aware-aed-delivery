@@ -1,0 +1,212 @@
+{
+  "attribution": "Map data from OpenStreetMap contributors, ODbL 1.0",
+  "licence": "Open Database License 1.0, https://opendatacommons.org/licenses/odbl/1-0/",
+  "area": {
+    "name": "vile_parle",
+    "query": "NMIMS Mumbai",
+    "centre_lat": 19.103442,
+    "centre_lon": 72.836459,
+    "radius_m": 2000.0,
+    "geocode_check": {
+      "status": "ok",
+      "query": "NMIMS Mumbai",
+      "lat": 19.103442,
+      "lon": 72.836459,
+      "offset_from_centre_m": 0.0
+    }
+  },
+  "osm_retrieved": {
+    "walk": "2026-09-30 02:43:42",
+    "drive": "2026-09-30 02:54:47"
+  },
+  "overpass_endpoint": {
+    "walk": "https://maps.mail.ru/osm/tools/overpass/api",
+    "drive": "https://maps.mail.ru/osm/tools/overpass/api"
+  },
+  "software": {
+    "osmnx": "2.1.1",
+    "networkx": "3.6.1",
+    "graph_created_with": "OSMnx 2.1.1"
+  },
+  "sampling": {
+    "n_pairs": 500,
+    "seed": 0,
+    "straight_min_m": 200.0,
+    "straight_max_m": 2000.0,
+    "max_snap_m": 200.0,
+    "proposals": 1068,
+    "rejected_outside_disc": 384,
+    "rejected_walk_snap": 110,
+    "rejected_drive_snap": 74,
+    "accepted": 500,
+    "walk_snap_m": {
+      "mean": 39.76441313687647,
+      "median": 31.351982214786993,
+      "p10": 9.648446395585804,
+      "p90": 79.92072652662684
+    },
+    "drive_snap_m": {
+      "mean": 48.21825200129501,
+      "median": 35.06940995385755,
+      "p10": 10.019124594928096,
+      "p90": 105.07899483701736
+    }
+  },
+  "walk_network": {
+    "n_nodes": 5076,
+    "n_edges_directed": 11234,
+    "n_edges_undirected": 5617,
+    "total_length_km": 178.41,
+    "largest_component_node_share": 0.9521,
+    "largest_component_length_share": 0.9682,
+    "length_km_by_highway_class": {
+      "residential": 80.78,
+      "tertiary": 29.05,
+      "primary": 22.83,
+      "secondary": 18.39,
+      "service": 13.78,
+      "footway": 4.69,
+      "path": 3.74,
+      "living_street": 2.24,
+      "track": 1.05,
+      "primary_link": 0.63,
+      "steps": 0.6,
+      "secondary_link": 0.35,
+      "tertiary_link": 0.28
+    },
+    "pedestrian_way_length_share": 0.0506,
+    "road_length_km": 169.39,
+    "road_with_sidewalk_tag_share": 0.0144,
+    "road_with_sidewalk_no_tag_share": 0.0035,
+    "road_untagged_for_sidewalk_share": 0.9821,
+    "pedestrian_ways_tagged_footway_key_share": 0.1142,
+    "crossing_way_length_km": 0.206,
+    "n_crossing_ways": 24,
+    "n_crossing_nodes": 24,
+    "n_kerb_tagged_nodes": 1,
+    "n_kerb_tagged_nodes_by_class": {
+      "raised": 1,
+      "lowered": 0,
+      "flush": 0
+    },
+    "n_kerb_tagged_edges": 0,
+    "n_tactile_paving_nodes": 0,
+    "crossing_nodes_per_km_of_network": 0.135,
+    "core_nodes": 4833,
+    "core_edges_directed": 10778
+  },
+  "drive_network": {
+    "n_nodes": 4435,
+    "n_edges_directed": 7849,
+    "core_nodes": 4001,
+    "core_edges_directed": 7217,
+    "major_road_segments_at_grade": 1823,
+    "major_road_length_km": 66.8
+  },
+  "routes": {
+    "n_pairs": 500,
+    "metrics": {
+      "straight_m": {
+        "mean": 941.7211799999999,
+        "median": 907.145,
+        "p10": 317.711,
+        "p90": 1671.1560000000002
+      },
+      "walk_m": {
+        "mean": 1660.9641000000001,
+        "median": 1519.865,
+        "p10": 567.565,
+        "p90": 2784.2080000000005
+      },
+      "walk_factor": {
+        "mean": 2.0107748,
+        "median": 1.5352000000000001,
+        "p10": 1.24902,
+        "p90": 2.5925
+      },
+      "drive_m": {
+        "mean": 1763.4591200000002,
+        "median": 1614.83,
+        "p10": 647.488,
+        "p90": 2978.104
+      },
+      "drive_factor": {
+        "mean": 2.0402435999999997,
+        "median": 1.7093500000000001,
+        "p10": 1.32176,
+        "p90": 3.0855200000000003
+      },
+      "n_crossings": {
+        "mean": 0.396,
+        "median": 0.0,
+        "p10": 0.0,
+        "p90": 2.0
+      },
+      "n_kerb_tagged": {
+        "mean": 0.002,
+        "median": 0.0,
+        "p10": 0.0,
+        "p90": 0.0
+      },
+      "n_crossings_major": {
+        "mean": 0.298,
+        "median": 0.0,
+        "p10": 0.0,
+        "p90": 1.0
+      },
+      "walk_footway_frac": {
+        "mean": 0.0318308,
+        "median": 0.0,
+        "p10": 0.0,
+        "p90": 0.08382000000000002
+      }
+    },
+    "per_km": {
+      "crossings_tagged": {
+        "mean": 0.20639548699669666,
+        "median": 0.0,
+        "p10": 0.0,
+        "p90": 0.845070207838856,
+        "pooled": 0.23841574902190843
+      },
+      "crossings_major": {
+        "mean": 0.2324943916496279,
+        "median": 0.0,
+        "p10": 0.0,
+        "p90": 0.868354890780226,
+        "pooled": 0.17941387173870887
+      },
+      "kerb_tagged_nodes": {
+        "mean": 0.0020214475585967114,
+        "median": 0.0,
+        "p10": 0.0,
+        "p90": 0.0,
+        "pooled": 0.001204119944555093
+      }
+    },
+    "graph_only_factor": {
+      "walk": {
+        "mean": 1.8910680345443447,
+        "median": 1.4242423129589605,
+        "p10": 1.1473829981831722,
+        "p90": 2.4386446924442957
+      },
+      "drive": {
+        "mean": 1.8997183191901026,
+        "median": 1.604989275892588,
+        "p10": 1.176955841041601,
+        "p90": 2.8714677355196856
+      }
+    },
+    "share_pairs_zero_crossings_tagged": 0.77,
+    "share_pairs_zero_crossings_major": 0.812,
+    "share_pairs_zero_kerb_tagged": 0.998
+  },
+  "definitions": {
+    "walk_m": "door to door: graph shortest path + straight access legs [m]",
+    "walk_factor": "walk_m / straight_m",
+    "n_crossings": "estimate A (tags): merged runs of highway=crossing nodes / footway=crossing edges on the walking route",
+    "n_crossings_major": "estimate B (geometry): transversal crossings of primary, secondary, tertiary, trunk roads by the walking route",
+    "n_kerb_tagged": "route nodes carrying a kerb=* tag"
+  }
+}

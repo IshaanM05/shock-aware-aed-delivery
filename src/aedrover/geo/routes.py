@@ -68,6 +68,13 @@ LICENCE_URL = "https://opendatacommons.org/licenses/odbl/1-0/"
 
 EARTH_RADIUS_M = 6_371_009.0  # metres; the radius OSMnx uses for edge lengths
 
+# Public Overpass instances, tried in rotation across retries (one request per attempt): the
+# main instance first, then a public mirror for the case where the main one is unreachable.
+OVERPASS_ENDPOINTS = (
+    "https://overpass-api.de/api",
+    "https://maps.mail.ru/osm/tools/overpass/api",
+)
+
 # Campus centre: Nominatim (through OSMnx) geocode of "NMIMS Mumbai", Vile Parle West.
 NMIMS_LAT = 19.103442
 NMIMS_LON = 72.836459
@@ -256,18 +263,18 @@ def is_pedestrian_way(attrs: dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------------------------
 # download and cache
 # ---------------------------------------------------------------------------------------------
-def _retry(fn: Callable[[], T], *, what: str, retries: int, backoff_s: float,
+def _retry(fn: Callable[[int], T], *, what: str, retries: int, backoff_s: float,
            log: Callable[[str], None]) -> T:
-    """Call ``fn``; on failure wait ``backoff_s * 2**attempt`` seconds and retry."""
+    """Call ``fn(attempt)``; on failure wait ``backoff_s * 2**attempt`` seconds and retry."""
     for attempt in range(retries + 1):
         try:
-            return fn()
+            return fn(attempt)
         except Exception as exc:  # network / Overpass errors come in many types
             if attempt == retries:
                 raise
             wait = backoff_s * (2.0**attempt)
-            log(f"  {what}: {type(exc).__name__}: {exc}; retry {attempt + 1}/{retries} in "
-                f"{wait:.0f} s")
+            log(f"  {what}: {type(exc).__name__}: {str(exc)[:160]}; retry {attempt + 1}/{retries}"
+                f" in {wait:.0f} s")
             time.sleep(wait)
     raise RuntimeError("unreachable")  # pragma: no cover
 
@@ -299,6 +306,7 @@ def graphml_path(area: AreaSpec, network_type: str, cache_dir: Path) -> Path:
 def load_or_download_network(area: AreaSpec, network_type: str, cache_dir: Path, *,
                              refresh: bool = False, allow_download: bool = True,
                              retries: int = 4, backoff_s: float = 15.0,
+                             endpoints: Sequence[str] = OVERPASS_ENDPOINTS,
                              log: Callable[[str], None] = print) -> nx.MultiDiGraph:
     """Load a cached OSM network or download it once (with retry and exponential backoff).
 
@@ -314,10 +322,12 @@ def load_or_download_network(area: AreaSpec, network_type: str, cache_dir: Path,
         allow_download: if False and no cache exists, raise ``FileNotFoundError``.
         retries: number of retries after the first failed download attempt.
         backoff_s: first wait [s]; doubled after each failure.
+        endpoints: Overpass API base URLs; attempt k uses ``endpoints[k % len(endpoints)]``.
         log: progress sink.
 
     Returns:
-        The MultiDiGraph. ``G.graph["created_date"]`` is the retrieval timestamp.
+        The MultiDiGraph. ``G.graph["created_date"]`` is the retrieval timestamp and
+        ``G.graph["overpass_endpoint"]`` the instance that served the data.
     """
     path = graphml_path(area, network_type, cache_dir)
     ox = configure_osmnx(cache_dir, use_http_cache=not refresh)
@@ -329,12 +339,20 @@ def load_or_download_network(area: AreaSpec, network_type: str, cache_dir: Path,
     log(f"  downloading {network_type} network (one Overpass request, radius "
         f"{area.radius_m:.0f} m) ...")
     polygon = area.disc_polygon()
-    graph = _retry(
-        lambda: ox.graph_from_polygon(polygon, network_type=network_type, simplify=False,
-                                      retain_all=True, truncate_by_edge=True),
-        what=f"{network_type} download", retries=retries, backoff_s=backoff_s, log=log)
+
+    def attempt_download(attempt: int) -> nx.MultiDiGraph:
+        ox.settings.overpass_url = endpoints[attempt % len(endpoints)]
+        graph = ox.graph_from_polygon(polygon, network_type=network_type, simplify=False,
+                                      retain_all=True, truncate_by_edge=True)
+        graph.graph["overpass_endpoint"] = ox.settings.overpass_url
+        return graph
+
+    graph = _retry(attempt_download, what=f"{network_type} download", retries=retries,
+                   backoff_s=backoff_s, log=log)
     path.parent.mkdir(parents=True, exist_ok=True)
     ox.save_graphml(graph, path)
+    log(f"  {network_type}: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges "
+        f"from {graph.graph['overpass_endpoint']}")
     return graph
 
 
@@ -1006,6 +1024,8 @@ def run_pipeline(area: AreaSpec, cache_dir: Path, *, n_pairs: int = 500, seed: i
                  "geocode_check": geocode},
         "osm_retrieved": {"walk": str(g_walk.graph.get("created_date", "unknown")),
                           "drive": str(g_drive.graph.get("created_date", "unknown"))},
+        "overpass_endpoint": {"walk": str(g_walk.graph.get("overpass_endpoint", "unknown")),
+                              "drive": str(g_drive.graph.get("overpass_endpoint", "unknown"))},
         "software": {"osmnx": md.version("osmnx"), "networkx": nx.__version__,
                      "graph_created_with": str(g_walk.graph.get("created_with", "unknown"))},
         "sampling": {"n_pairs": n_pairs, "seed": seed, "straight_min_m": min_m,
