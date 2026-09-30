@@ -40,3 +40,6 @@ regression test. They are recorded because none of them raises an error.
 * Model arena is 8 MB (`<size memory="8M">`); with 28 workers each caching a model, larger arenas
   exhausted memory ("Could not allocate memory for texture").
 * H.264 encoding needs even frame dimensions.
+* Two large multi-process jobs cannot overlap: 24 PPO environment processes (each with PyTorch loaded) plus 20
+  spawned evaluation workers exhausted the Windows commit limit ("The paging file is too small for this operation
+  to complete" while importing SciPy) and killed the pool. Run heavy stages one after another; the pipeline runner does.
