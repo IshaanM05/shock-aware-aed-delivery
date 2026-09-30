@@ -176,6 +176,7 @@ The real Mumbai route geometry is in `data/osm`; crossing density is taken as an
 | [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) | what the study supports and what it does not |
 | [`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) | 15 silent MuJoCo pitfalls, each with a regression test |
 | [`docs/RENDERING.md`](docs/RENDERING.md) | how the cinematic renderer works (PBR backend, recorded episodes, post-processing) and its MuJoCo quirks |
+| [`HANDOFF.md`](HANDOFF.md) | state of the repository and a detailed plan for the two next tasks: a collidable rich-world mode and drone visuals |
 | [`docs/NMIMS_EXPORT.md`](docs/NMIMS_EXPORT.md) | generating the course-template folder from this repository |
 
 ## Engineering notes worth reading
