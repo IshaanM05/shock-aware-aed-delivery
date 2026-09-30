@@ -43,8 +43,10 @@ def section_benchmark(lines: list[str], tag: str) -> pd.DataFrame | None:
         return None
     df = pd.read_csv(path)
     df["success"] = df["success"].astype(bool)
-    n = int(df.groupby(["controller", "family"]).size().min())
-    FR.fig_benchmark(df, FIG / "benchmark.png", title=f"Controller benchmark ({n}+ paired episodes per cell, co-designed vehicle, common speed cap)")
+    per_cell = df.groupby(["controller", "family"]).size()
+    n, n_max = int(per_cell.min()), int(per_cell.max())
+    cell = f"{n}" if n == n_max else f"{n}-{n_max}"
+    FR.fig_benchmark(df, FIG / "benchmark.png", title=f"Controller benchmark ({cell} paired episodes per cell, co-designed vehicle, common speed cap)")
     sm = summarize(df)
     sm.to_csv(RES / "tables_benchmark_summary.csv", index=False)
     df["safe"] = delivery_success(df)
@@ -57,8 +59,11 @@ def section_benchmark(lines: list[str], tag: str) -> pd.DataFrame | None:
     tab = pivot.loc[order, cols].rename(index=F.CONTROLLER_LABELS, columns=F.FAMILY_LABELS).reset_index()
     tab = tab.rename(columns={"controller": "Controller"})
     lines += ["## 2. Controller benchmark (RQ2)", "",
-              f"Every controller ran the same {n} seeds per scenario family (paired), on the co-designed vehicle, with the "
-              "same top speed and the same safety filter. **Safe delivery** = goal reached AND peak payload shock within 3 g.", "",
+              (f"Every controller ran the same {n} seeds per scenario family (paired)" if n == n_max else
+               f"Every controller ran seeds drawn from the same {n_max} per scenario family; MPPI, about 100 times costlier to "
+               f"simulate, ran the first {n} of them, and the paired tests below use only the seeds two controllers share") +
+              ", on the co-designed vehicle, with the same top speed and the same safety filter. "
+              "**Safe delivery** = goal reached AND peak payload shock within 3 g.", "",
               f"![benchmark]({rel(FIG / 'benchmark.png')})", "", "### Safe-delivery rate", "", to_markdown(tab, "{:.2f}"), ""]
     ref = "dwa" if "dwa" in set(df.controller) else df.controller.iloc[0]
     pv = paired_vs_reference(df, ref)

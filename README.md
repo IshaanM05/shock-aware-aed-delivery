@@ -6,8 +6,8 @@ mechanical design that lets it cross kerbs without damaging its payload, physics
 and learned policies against classical navigation, and a clinical break-even analysis against
 ambulance and drone delivery.
 
-> Status: work in progress. Sections marked **pending** are being finalised; every number below
-> is measured by code in this repository and can be regenerated. Nothing is quoted from memory.
+> Status: the standard experiment run is complete. Every number below is measured by code in this
+> repository and can be regenerated (`docs/REPRODUCE.md`). Not yet done: a paper draft and GPU-scale training.
 
 ![Rover crossing a 13.5 cm kerb (MuJoCo render; draft vehicle, DWA controller)](assets/kerb_dwa_stills.png)
 
@@ -55,22 +55,86 @@ Share of the eight test conditions within the 3 g budget: **25% -> 88%**. The se
 wheel radius to its 0.22 m packaging bound and wants a soft suspension and a soft payload
 isolator, so the design is wheel-radius-limited, not stiffness-limited.
 
-**Classical navigation on the co-designed vehicle** (40 episodes per cell, paired seeds, safety
-filter on): the kerb scenario is solved 40 out of 40 times by the dynamic-window planner with a
-kerb negotiator, at a median payload shock of 2.4 g. Reactive planners struggle with dense
-pedestrian streams, which is exactly where the sampling-based and learned controllers are being
-compared.
-
 **A learned policy trains on a laptop CPU.** PPO with domain randomisation (24 environments, 12 million
-decisions, 69 minutes, `docs/PPO_TRAINING.md`) reaches the goal in 82.5% of 200 held-out episodes versus 69.0% for
-the dynamic-window planner on the same seeds (paired exact McNemar, Holm-adjusted p = 0.007), and is faster. That
-timing gap is partly a speed-cap effect (the policy may command 2.6 m/s, the planner cruises at 1.8 m/s), so the
-main benchmark below gives every controller the same cap. Switching the safety filter off barely changes the
-policy's results, so it is not leaning on the filter.
+decisions, 69 minutes, `docs/PPO_TRAINING.md`) is the strongest controller in the benchmark below. The checkpoint is
+chosen on validation seeds, never on the benchmark seeds.
 
-**Pending**: the full controller benchmark with equal speed caps (100 paired episodes per controller and scenario
-family), MPPI and the second PPO seed in that benchmark, the out-of-distribution study, ablations, and the clinical
-analysis. The real Mumbai route geometry from OpenStreetMap is already in (`docs/OSM_ROUTES.md`, data under `data/osm`).
+### Controller benchmark (RQ2)
+
+2,250 episodes on the co-designed vehicle, five scenario families, every controller with the same 2 m/s speed cap and
+the same safety filter (`experiments/03_controller_benchmark.py`). **Safe delivery** means the goal is reached and the
+peak payload shock stays within 3 g. MPPI, about 100 times costlier to simulate, ran 50 seeds per family and the others
+100; paired tests use only the seeds two controllers share.
+
+| Controller | Episodes | Safe delivery | Collision | Stall | Median time (successful runs) |
+|---|---|---|---|---|---|
+| **PPO** (domain-randomised) | 500 | **86.6%** | 0.8% | 6.6% | 19.4 s |
+| MPPI (physics rollouts) | 250 | 75.2% | 0.8% | 10.4% | 23.9 s |
+| Dynamic window | 500 | 62.4% | 10.0% | 23.2% | 21.5 s |
+| Potential field | 500 | 59.0% | 4.2% | 20.6% | 21.5 s |
+| Pure pursuit | 500 | 39.8% | 6.4% | 43.6% | 18.4 s |
+
+All controllers reach 100% on flat, clear ground; the differences are in the kerb, crowded and slippery families
+(per-family table and figure in [`docs/RESULTS.md`](docs/RESULTS.md)). Against the dynamic-window planner on shared
+seeds (Holm-adjusted): PPO delivers safely 24 points more often (p < 1e-20), is 2.9 s faster on successful pairs
+(Cohen's d = -0.88) and has the same payload shock (p = 0.75). MPPI delivers 13 points more often (p = 0.003), is 4.7 s
+slower, and keeps payload shock 0.30 g lower (d = -0.61), which is what its shock-weighted cost asks for. The potential
+field does not differ from the dynamic window on safe delivery (p = 1.0).
+
+Caveats. PPO trained on the same scenario distribution it is tested on (different seeds), so this is an in-distribution
+comparison; the next section is the test of generalisation. MPPI's shorter seed list gives wider intervals. Its
+failures split between stalls and leaving the sidewalk, with almost no collisions.
+
+### Out-of-distribution (`experiments/04_ood_generalization.py`, 1,000 episodes)
+
+Kerb and mixed scenarios, with taller kerbs (15-19 cm, training saw 6-16 cm) and slipperier paving (mu 0.3-0.5, training
+saw 0.5-1.2). Safe delivery:
+
+| Controller | In distribution | Taller kerbs | Slipperier | Both |
+|---|---|---|---|---|
+| Dynamic window | 66% | **32%** | 60% | **32%** |
+| MPPI | 78% | 66% | 78% | 72% |
+| PPO | 73% | 79% | 75% | 80% |
+
+The planner's success halves on taller kerbs. PPO and MPPI show no measurable drop: 95% intervals are about +/-9 points
+(PPO, dynamic window, 100 episodes per cell) and +/-13 (MPPI, 50), so PPO scoring slightly higher on the taller kerbs
+is noise and should not be read as an improvement. I did not investigate why PPO holds up on taller kerbs.
+
+### Ablations (`experiments/07_ablations.py`)
+
+* **Co-design matters most to controllers that ignore shock.** The co-designed vehicle raises the dynamic-window
+  planner's safe delivery from 52% to 82% on kerbs (shock over budget 48% -> 18%) and from 15% to 32% on the mixed
+  family. MPPI reaches 100% on kerbs with either vehicle, because its cost already slows it for kerbs. (MPPI cells have
+  20 episodes, so its mixed-family 50% versus 45% is noise.)
+* **The safety filter trades delivery for collisions.** Switching it on cuts collisions from 19% to 11% (dynamic
+  window), 5% to 0% (MPPI) and 6% to 1% (PPO) on mixed and crowded scenes. It costs the dynamic window 8 points of
+  delivery (52% -> 44%) and PPO 4 (85% -> 81%), and MPPI none (68% both ways).
+* **The 0.8 m/s shared-zone cap in the course brief has a price.** PPO's median time grows 2.3x (22 s at 2.0 m/s to
+  51 s at 0.8 m/s) and its safe delivery falls to 28% (75% at 2.6 m/s). Those failures are stalls and leaving the
+  sidewalk, not timeouts (the longest episode was 62 s of 90 s), and the policy was trained with a 2 m/s cap, so this is
+  PPO outside its training speed, not the limit of a policy trained for 0.8 m/s. MPPI is flat at 50-60% across caps and
+  the dynamic window is flat to falling (35% at 0.8 m/s, 15% at 2.6 m/s). 40 episodes per cell (MPPI 20).
+
+### Clinical break-even (RQ3, `experiments/05_clinical_analysis.py`)
+
+Larsen (1993) survival, Naess (2024) ambulance response times (median 10.0 min, 90th percentile 17.7 min), and rover
+travel times composed from the simulated 36 m route segments over real Mumbai geometry (OpenStreetMap, Vile Parle;
+route factor 1.54; `docs/OSM_ROUTES.md`).
+
+* **The rover helps only at short range.** Rover plus ambulance beats the ambulance alone inside about **0.58 km**
+  for PPO and the dynamic window (effective speed 1.97 m/s) and inside **0.46 km** for MPPI (1.53 m/s). With the
+  harsher rule-of-thumb survival model the radii shrink to 0.32 km and 0.25 km.
+* **At 1 km the rover adds nothing; a drone does.** With ambulance-only survival at 23.3%, a drone that can always
+  fly reaches 29.7% (+6.4 points, 95% interval 6.2-6.5). The hybrid "drone when it can fly, otherwise rover" policy
+  equals the drone-only policy at this radius because the rover contributes nothing there. The drone is an upper
+  bound: its 60 s launch latency and 10 m/s wind limit are assumptions, and its flight time is about 20% faster than
+  Claesson (2017) reports (`docs/DRONE_COMPARATOR.md`).
+* **Sensitivity.** Response radius dominates (a 5.3-point swing over 250-2000 m), then rover speed (1.8 points over
+  1-3 m/s), route factor and ambulance arrival-to-shock time. The course's dimensionless cost ratio kappa comes out
+  at 0.22 against the 0.25 target, but every economic input is an assumption and this is illustrative only.
+
+The real Mumbai route geometry is in `data/osm`; crossing density is taken as an OSM-tagged lower bound and swept up to
+8 crossings per km because untagged crossings are common.
 
 ## How it works
 
@@ -98,7 +162,7 @@ analysis. The real Mumbai route geometry from OpenStreetMap is already in (`docs
 |---|---|
 | [`docs/METHODS.md`](docs/METHODS.md) | the model, controllers, metrics and clinical layer exactly as implemented |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | physics validation against closed-form mechanics (generated from results) |
-| [`docs/RESULTS.md`](docs/RESULTS.md) | generated tables, figures and paired statistics (appears once the pipeline has run) |
+| [`docs/RESULTS.md`](docs/RESULTS.md) | generated tables, figures and paired statistics |
 | [`docs/PPO_TRAINING.md`](docs/PPO_TRAINING.md) | learning curve and held-out evaluation, regenerated automatically |
 | [`docs/REPRODUCE.md`](docs/REPRODUCE.md) | every command in order, run times and seed ranges |
 | [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) | what the study supports and what it does not |

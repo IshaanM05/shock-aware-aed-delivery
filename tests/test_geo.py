@@ -426,8 +426,9 @@ def test_docs_quote_the_committed_numbers():
     for key in ("walk_factor", "drive_factor"):
         for stat in ("median", "p90"):
             assert f"{m[key][stat]:.2f}" in doc, f"{key} {stat} missing from the doc"
-    per_km = stored["routes"]["per_km"]["crossings_major"]["median"]
-    assert f"{per_km:.2f}" in doc
+    for key in ("crossings_tagged", "crossings_major"):          # the doc quotes the pooled densities
+        pooled = stored["routes"]["per_km"][key]["pooled"]
+        assert f"pooled {pooled:.2f}" in doc, f"{key} pooled density missing from the doc"
 
 
 # ---------------------------------------------------------------------------------------------
