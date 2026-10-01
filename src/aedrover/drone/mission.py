@@ -400,6 +400,7 @@ def simulate_mission(
     ep: EnergyParams | None = None,
     wind_cross_mps: float = 0.0,
     gust_tau_s: float = 5.0,
+    trace: list | None = None,
 ) -> MissionResult:
     """Run the full MuJoCo mission: launch, climb, cruise, descend, release.
 
@@ -414,6 +415,9 @@ def simulate_mission(
         ep: energy parameters.
         wind_cross_mps: mean crosswind [m/s].
         gust_tau_s: gust correlation time [s].
+        trace: optional list that receives one ``(t, pos, quat, rotor_thrusts)`` tuple per control tick
+            (the state at the start of the tick, so the last sample is the release state on success),
+            for replaying the flight. ``None`` records nothing and changes no result.
 
     Returns:
         A :class:`MissionResult`; time fields are ``math.inf`` if the mission did not complete.
@@ -448,6 +452,8 @@ def simulate_mission(
     t_done = inf
     for k in range(n_steps):
         s = sim.state()
+        if trace is not None:
+            trace.append((k * dt_c, s.pos.copy(), s.quat.copy(), sim.rotor_thrusts().copy()))
         err = float(np.linalg.norm(s.pos - p_ref[k]))
         peak_err = max(peak_err, err)
         max_tilt = max(max_tilt, s.tilt_rad)

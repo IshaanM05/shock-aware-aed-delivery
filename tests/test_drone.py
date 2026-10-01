@@ -199,6 +199,24 @@ def test_mission_is_deterministic_for_a_seed():
     assert a.energy_wh != c.energy_wh
 
 
+def test_trace_records_the_flight_without_changing_the_result():
+    trace: list = []
+    a = simulate_mission(300.0, 0.0, 0.0, seed=0)
+    b = simulate_mission(300.0, 0.0, 0.0, seed=0, trace=trace)
+    assert a == b and a.completed
+    t = np.array([row[0] for row in trace])
+    pos = np.array([row[1] for row in trace])
+    quat = np.array([row[2] for row in trace])
+    thrust = np.array([row[3] for row in trace])
+    assert len(trace) == int(round(t[-1] / DT_CTRL)) + 1 and np.allclose(np.diff(t), DT_CTRL)
+    assert pos.shape == (len(t), 3) and quat.shape == (len(t), 4) and thrust.shape == (len(t), 4)
+    assert np.allclose(np.linalg.norm(quat, axis=1), 1.0)
+    assert np.allclose(pos[0, :2], 0.0) and pos[0, 2] < 0.2          # starts on the ground at the origin
+    assert abs(t[-1] - a.flight_time_s) < 1e-9                       # the last sample is the release instant
+    assert np.linalg.norm(pos[-1] - np.array([300.0, 0.0, MissionParams().release_height_m])) < 0.5
+    assert pos[:, 2].max() > MissionParams().cruise_alt_m - 1.0       # it really climbed to cruise altitude
+
+
 def test_analytic_mission_time_matches_simulation(calm_missions):
     for d, r in calm_missions.items():
         assert r.completed, (d, r.reason)
