@@ -30,6 +30,10 @@ python scripts/render_showcase.py --quality high --hero --poster     # 1080p60 f
 5. **Cut** (`viz/shots.py`, `camera.py`, `hud.py`, `film.py`). Camera rigs with inertia, slow motion around the shock
    peak, a live heads-up display, cards, and H.264 encoding straight from the frame stream.
 
+The AED quadrotor follows the same pattern: `aedrover.drone` simulates a mission in its own model, `viz/drone_recording.py`
+stores its pose and rotor thrusts every control tick (`simulate_mission(..., trace=...)`), and `viz/drone_visuals.py` draws
+it as mocap-driven visual parts. The drone is never merged into the rover's physics.
+
 Because shots are rendered from recordings, one episode can be filmed from several cameras and in slow motion
 without simulating it again. A dynamic-window, an MPPI and a PPO episode on the same seed share one street, so the
 kerb comparison in the film is the same scene three times.
@@ -49,6 +53,22 @@ kerb comparison in the film is the same scene three times.
   the model but are shrunk to a point in the render copy.
 * **People.** Low-poly pedestrians made of mocap limb segments. Heading comes from the smoothed recorded velocity and
   stride phase from the distance walked, so feet do not slide and a standing pedestrian stands.
+* **Drone.** The comparator quadrotor drawn from the dimensions of the simulated vehicle (0.45 m arms, 0.25 m rotors,
+  AED case with a white cross slung underneath, skids). One mocap body carries the airframe, four turn the rotors, and two
+  parked-or-shown glowing spheres are the status light (amber in flight, green once the mission has released), because
+  material colour is not updated per frame. The airframe pose is exactly the recorded pose moved into the street by a rigid
+  `Placement`; `tests/test_drone_viz.py` checks it against the recorded arrays to 1e-9. Rotors turn at 5% of the simulated speed
+  (a real rotor at about 40 rev/s would strobe at 60 frames per second), against their reaction torque, with an orange tip on
+  the front pair so the spin and the heading read.
+* **Dispatch shot** (`viz/dispatch.py`). The street is a 36 m segment but the clinical comparison is about a 1 km radius, so the
+  film does not pretend to show the real distances. Two beats share one *dispatch clock* (simulated seconds since the alert): the
+  drone's last approach and descent from its simulated flight, then, after a time skip, the end of the rover's recorded segment
+  arriving beneath the hovering drone. The HUD shows the clock, the distance each vehicle still has to cover at true scale and
+  when each arrives. Every number comes from code (`MissionParams`, `mission_time_s`, `ScenarioParams`) or from `results/`
+  (`clinical_routes.csv`, `clinical_survival_vs_radius.csv`): the drone arrives at `time_to_scene_s`, the rover at the median
+  travel time of the route model (PPO, 4 crossings per km), the survival panel quotes the ambulance, rover and drone rows. The
+  clinical model times its drone more simply than the flown simulation (`docs/DRONE_COMPARATOR.md`, section 9), and the panel says
+  by how much. Launch latency and the wind limit are assumptions and the drone is an upper bound; the footnote says so.
 * **Data overlays.** (MPPI's rollout shot draws 24 of the 128 sampled rollouts per plan, spread over the cost ranking.) A cyan trail of the rover's actual upcoming path (works for every controller), a lidar
   bubble that dents inward where something is detected, MPPI's 24 sampled rollouts coloured by cost rank with the
   best one highlighted, and a halo that turns green, amber or red with the live payload shock.
@@ -83,11 +103,17 @@ These are behaviours that cost time to find; each is handled in the code.
 * **Texture tiling.** With `texuniform` one texture tile spans `2 / texrepeat` metres.
 * **Skybox faces.** World directions of the six faces, measured with sign-coded textures, are listed in
   `viz/assets.py`.
+* **Small, far objects turn into sky.** The haze distance comes from a quarter-resolution depth map with a median filter, so a
+  0.9 m drone beyond about 50 to 100 m from the camera drops out of it and gets full haze and heavy blur. The drone shots keep a
+  camera 8 to 15 m from the drone, use a lighter `Grade.haze_strength`, and focus depth of field on the drone.
+* **Distant towers and a flight line.** The skyline towers (260 m and 420 m rings, 25 to 110 m tall) are higher than the drone's
+  50 m cruise, so `dress_scene(..., clear_flight_corridor=...)` leaves out the ones near the flight line, consuming the random
+  stream identically so nothing else in the scene moves.
 
 ## Speed
 
 On an RTX 4080 laptop, drawing one 1080p frame with PBR, shadows and image-based lighting takes about 6 ms in a
-minimal scene and 20 to 50 ms in the dressed street (about 1,500 geoms). The finishing chain (haze, depth of
+minimal scene and 20 to 50 ms in the dressed street (about 2,000 geoms, 3,000 with MPPI's rollout overlay). The finishing chain (haze, depth of
 field, bloom, grade) adds roughly 80 ms, the depth pass about 30 ms, the HUD about 20 ms. The laptop's
 performance state makes these vary by about 2x from run to run. Simulation is unaffected: recording an
 episode runs at full CPU speed (a PPO or dynamic-window episode in a few seconds, an MPPI one in about half a

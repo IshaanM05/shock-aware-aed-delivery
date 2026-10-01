@@ -13,7 +13,8 @@ ambulance and drone delivery.
 
 *One scenario, not a statistic (mixed kerb and crowd, seed 5010). The dynamic-window planner arrives but its payload
 peaks at 3.1 g against the 3 g budget (slow motion, live gauge). MPPI peaks at 1.6 g and PPO at 1.8 g on the same
-street; they are in the [68-second film](assets/showcase.mp4), along with MPPI's planning rollouts. Everything
+street; they are in the [87-second film](assets/showcase.mp4), along with MPPI's planning rollouts and a rover-versus-drone
+dispatch shot whose clocks and survival figures come from the drone simulation and `results/`. Everything
 is drawn by MuJoCo's own PBR renderer from recorded episodes ([how](docs/RENDERING.md)); the statistics are in the
 benchmark below.*
 
@@ -135,8 +136,10 @@ route factor 1.54; `docs/OSM_ROUTES.md`).
 * **At 1 km the rover adds nothing; a drone does.** With ambulance-only survival at 23.3%, a drone that can always
   fly reaches 29.7% (+6.4 points, 95% interval 6.2-6.5). The hybrid "drone when it can fly, otherwise rover" policy
   equals the drone-only policy at this radius because the rover contributes nothing there. The drone is an upper
-  bound: its 60 s launch latency and 10 m/s wind limit are assumptions, and its flight time is about 20% faster than
-  Claesson (2017) reports (`docs/DRONE_COMPARATOR.md`).
+  bound. The clinical model gives it a 30 s launch and a straight 15 m/s flight; the simulated drone of
+  `docs/DRONE_COMPARATOR.md` needs a 60 s launch (an assumption) plus climb and descent, 1.16 min more, which lowers
+  the 29.7% to 28.5%. Its 10 m/s wind limit is also an assumption, and the simulated flight time is about 20% faster
+  than Claesson (2017) reports.
 * **Sensitivity.** Response radius dominates (a 5.3-point swing over 250-2000 m), then rover speed (1.8 points over
   1-3 m/s), route factor and ambulance arrival-to-shock time. The course's dimensionless cost ratio kappa comes out
   at 0.22 against the 0.25 target, but every economic input is an assumption and this is illustrative only.
@@ -176,7 +179,7 @@ The real Mumbai route geometry is in `data/osm`; crossing density is taken as an
 | [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) | what the study supports and what it does not |
 | [`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) | 15 silent MuJoCo pitfalls, each with a regression test |
 | [`docs/RENDERING.md`](docs/RENDERING.md) | how the cinematic renderer works (PBR backend, recorded episodes, post-processing) and its MuJoCo quirks |
-| [`HANDOFF.md`](HANDOFF.md) | state of the repository and a detailed plan for the two next tasks: a collidable rich-world mode and drone visuals |
+| [`HANDOFF.md`](HANDOFF.md) | state of the repository and a detailed plan for the remaining task: a collidable rich-world mode |
 | [`docs/NMIMS_EXPORT.md`](docs/NMIMS_EXPORT.md) | generating the course-template folder from this repository |
 
 ## Engineering notes worth reading
@@ -193,7 +196,7 @@ what ran before it). Each has a regression test.
 python -m venv .venv
 .venv/Scripts/activate            # Linux/macOS: source .venv/bin/activate
 pip install -e ".[dev,viz]"       # add ",rl" for PPO training (PyTorch, Stable-Baselines3)
-pytest -m "not slow" -n auto      # about 200 tests
+pytest -m "not slow" -n auto      # about 300 tests
 python experiments/01_validate_suspension.py
 python experiments/03_controller_benchmark.py --n 10 --tag smoke --controllers pure_pursuit apf dwa
 python scripts/live_cinematic.py                        # watch a run in a window with the cinematic look (recommended demo)

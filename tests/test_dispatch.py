@@ -20,6 +20,7 @@ from aedrover.viz.dispatch import (
     load_numbers,
     rig_aerial_follow,
     rig_arrival,
+    rig_head_on,
 )
 from aedrover.viz.drone_recording import DroneRecording, record_drone_mission
 from aedrover.viz.drone_visuals import DroneSpec, Placement
@@ -147,6 +148,17 @@ def test_arrival_rig_sits_behind_the_rover_and_aims_toward_the_drone():
     for pose, r in zip(rig_arrival(swing_deg=0.0, back=4.0, bias=0.5)(ctx), rover, strict=True):
         assert pose.pos[0] == pytest.approx(r[0] - 4.0)
         assert r[0] < pose.target[0] < 36.0 and pose.target[2] > r[2]
+
+
+def test_head_on_rig_looks_back_down_the_footway_and_ends_under_the_drone():
+    n = 40
+    drone = np.tile([36.0, 0.0, 2.0], (n, 1))
+    rover = np.stack([np.linspace(14.0, 36.0, n), np.zeros(n), np.full(n, 0.2)], axis=1)
+    ctx = DispatchContext(np.linspace(0, 1, n), np.zeros(n), drone, 0.0, rover, np.zeros(n))
+    poses = rig_head_on()(ctx)
+    assert all(p.pos[0] > 36.0 and abs(p.pos[1]) < 4.5 for p in poses)               # past the drone, inside the street
+    assert np.allclose(poses[0].target[:2], rover[0, :2]) and np.allclose(poses[-1].target[:2], [36.0, 0.0])
+    assert poses[0].pos[0] > poses[-1].pos[0]                                         # dollies in
 
 
 # ----------------------------------------------------------------------------------------- film

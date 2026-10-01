@@ -146,6 +146,28 @@ def rig_arrival(back: float = 4.2, height: float = 1.3, swing_deg: float = 36.0,
     return rig
 
 
+def rig_head_on(start=(9.0, -1.4, 1.6), end=(4.6, -1.0, 1.0), look_z: float = 1.4, fovy: float = 54.0) -> DispatchRig:
+    """A camera ahead of the hovering drone, looking back down the footway, dollying in while the rover arrives beneath it.
+
+    ``start`` and ``end`` are (distance past the drone along the flight direction, lateral, height) offsets from the point
+    on the ground under the drone. The target eases from the rover to a point just under the drone, so both stay in frame.
+    The sun is ahead of the flight direction, so this side is front-lit.
+    """
+    def rig(ctx: DispatchContext) -> list[CameraPose]:
+        assert ctx.rover is not None
+        c, s = math.cos(ctx.heading), math.sin(ctx.heading)
+        out = []
+        for r, d, u in zip(ctx.rover, ctx.drone, ctx.u, strict=True):
+            e = float(ease(u))
+            f, le, z = np.array(start) * (1 - e) + np.array(end) * e
+            cam = np.array([d[0] + c * f - s * le, d[1] + s * f + c * le, z])
+            under = np.array([d[0], d[1], look_z])
+            tgt = r * (1 - e) + under * e + np.array([0.0, 0.0, 0.3 * (1 - e)])
+            out.append(CameraPose(tuple(cam), tuple(tgt), fovy))
+        return out
+    return rig
+
+
 def fit_rate(frames: int, fps: int, clock_start: float, clock_end: float,
              slow: tuple[float, float, float] | None = None) -> float:
     """The playback rate (simulated seconds per film second) that takes the clock from ``clock_start`` to ``clock_end``

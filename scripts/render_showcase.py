@@ -25,8 +25,18 @@ sys.path.insert(0, str(ROOT / "src"))
 from aedrover.analysis.report import delivery_success  # noqa: E402
 from aedrover.analysis.stats import wilson_ci  # noqa: E402
 from aedrover.viz import hud  # noqa: E402
+from aedrover.viz.dispatch import (  # noqa: E402
+    DispatchShot,
+    fit_rate,
+    load_numbers,
+    rig_aerial_follow,
+    rig_head_on,
+)
+from aedrover.viz.drone_recording import DroneRecording, load_or_record  # noqa: E402
+from aedrover.viz.drone_visuals import DroneSpec, Placement  # noqa: E402
 from aedrover.viz.film import Card, Film, Shot  # noqa: E402
 from aedrover.viz.overlays import OverlayConfig  # noqa: E402
+from aedrover.viz.post import Grade  # noqa: E402
 from aedrover.viz.recording import Recording, record_episode  # noqa: E402
 from aedrover.viz.shots import (  # noqa: E402
     ease,
@@ -76,7 +86,38 @@ def result_rows() -> tuple[list[tuple[str, float, float, str]], int]:
     return [(a, b, c, d) for a, b, c, d, _ in rows], len(df)
 
 
-def build_items(recs: dict[str, Recording], fps: int, size: tuple[int, int]) -> list:
+def dispatch_items(recs: dict[str, Recording], fps: int, drone: DroneRecording) -> list:
+    """The rover-versus-drone section: two beats on one dispatch clock (see ``aedrover.viz.dispatch``).
+
+    Every number shown is read from ``results/`` or computed by the drone and clinical code, never typed.
+    """
+    sec = lambda x: int(round(x * fps))                      # noqa: E731
+    num = load_numbers(ROOT / "results")
+    rec = recs["ppo"]
+    spec = DroneSpec(drone, Placement.arriving_at((float(rec.meta["scenario"]["x_goal"]), 0.0), num.radius_m))
+    grade = Grade(haze_strength=0.4)
+    footnote = (f"launch latency {num.drone_launch_s:.0f} s and the wind limit are assumptions; the drone is an upper bound. "
+                f"Rover: {num.controller.upper()}, 4 crossings per km, median of the {100 * num.rover_p_safe:.1f}% of routes it delivers safely")
+    # beat 1: from 150 m before the stop point to a short hover after release, slowing into the hover
+    approach = float(drone.t[np.argmax(drone.pos[:, 0] >= num.radius_m - 150.0)])
+    start, slow = num.drone_launch_s + approach, (num.drone_arrival_s, 2.0, 0.25)
+    frames1 = sec(11.0)
+    beat1 = DispatchShot("dispatch-drone", "ppo", spec, num, rig_aerial_follow(), frames1, clock_start=start,
+                         rate=fit_rate(frames1, fps, start, num.drone_arrival_s + 2.5, slow), slow=slow,
+                         title="Drone: last approach", caption=f"{num.radius_m / 1000:g} km straight line, simulated flight",
+                         footnote=footnote, grade=grade)
+    # beat 2: the end of the rover's recorded segment, arriving exactly at the median arrival time of the route model
+    frames2, rate = sec(8.0), 1.6
+    beat2 = DispatchShot("dispatch-rover", "ppo", spec, num, rig_head_on(), frames2,
+                         clock_start=num.rover_arrival_s - rate * (frames2 - 1) / fps, rate=rate, rover_visible=True,
+                         overlays=OverlayConfig(rollouts=False, lidar=False), title="Rover: arrival", show_result=True,
+                         caption=f"{(num.rover_arrival_s - num.drone_arrival_s) / 60:.0f} min later, end of a "
+                                 f"{rec.meta['scenario']['x_goal']:.0f} m segment of the {num.rover_route_m:,.0f} m route",
+                         footnote=footnote, grade=grade)
+    return [beat1, beat2]
+
+
+def build_items(recs: dict[str, Recording], fps: int, size: tuple[int, int], drone: DroneRecording | None = None) -> list:
     sec = lambda s: int(round(s * fps))                       # noqa: E731
     peak = {k: int(np.argmax(r.shock_g)) for k, r in recs.items()}
     flow = OverlayConfig(rollouts=False)
@@ -97,6 +138,7 @@ def build_items(recs: dict[str, Recording], fps: int, size: tuple[int, int]) -> 
                     overlays=clean, controller=name, caption=caption, dof=0.30)
 
     mppi_n = len(recs["mppi"])
+    dispatch = dispatch_items(recs, fps, drone) if drone is not None else []
     return [
         Shot("title-crane", "ppo", rig_crane((-46, 5, 36), (-5.0, -2.9, 1.9), fov0=62, fov1=48), frames=sec(6.0), start_step=0,
              overlays=flow, controller="PPO", title=("Shock-aware AED delivery", "MuJoCo  |  learned control vs classical navigation"),
@@ -111,6 +153,7 @@ def build_items(recs: dict[str, Recording], fps: int, size: tuple[int, int]) -> 
         kerb("ppo", "PPO (learned)", "learned policy: payload within budget"),
         Shot("mppi-rollouts", "mppi", rig_top(height=11.0, back=3.0, fovy=46), frames=sec(10.0), start_step=int(0.12 * mppi_n),
              overlays=OverlayConfig(), controller="MPPI", caption="physics rollouts every 0.1 s (24 of 128 drawn)", dof=0.0),
+        *dispatch,
         Card("results", sec(8.0), results_card),
         Shot("closing-crane", "ppo", rig_crane((-4.6, -2.9, 1.8), (-40, 6, 32), fov0=46, fov1=60), frames=sec(5.0),
              start_step=int(0.72 * len(recs["ppo"])), overlays=flow, controller="PPO", show_hud=False, dof=0.25, fade_out=0.6),
@@ -149,7 +192,8 @@ def main() -> None:
     print("recording episodes (cached under .cache/recordings) ...", flush=True)
     recs = {k: get_recording(k, a.refresh) for k in EPISODES}
     film = Film(recs, size=size, fps=fps)
-    items = build_items(recs, fps, size)
+    drone = load_or_record(CACHE / "drone_mission.npz", load_numbers(ROOT / "results").radius_m, refresh=a.refresh)
+    items = build_items(recs, fps, size, drone)
     t0 = time.perf_counter()
     film.render(items, out, crf=crf)
     print(f"total {time.perf_counter() - t0:.0f}s", flush=True)

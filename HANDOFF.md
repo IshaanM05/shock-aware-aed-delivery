@@ -13,10 +13,10 @@ Public repo: https://github.com/IshaanM05/shock-aware-aed-delivery (branch `main
 | Controllers (`nav`, `learning`, `control`) | Done: pure pursuit, potential field, dynamic window, MPPI, PPO, swept-footprint safety filter. PPO policy is committed in `models/ppo_selected`. |
 | Experiments and results | Done, but **computed before the inertia fix** (see section 2, item 1). |
 | Clinical and drone layers | Done (`clinical`, `drone`), numbers in `results/clinical*.csv` and `docs/DRONE_COMPARATOR.md`. |
-| Cinematic renderer (`src/aedrover/viz`) | Done: recorded episodes replayed through MuJoCo 3.14's PBR (Filament) renderer. See `docs/RENDERING.md`. |
-| Media | `assets/showcase.mp4` (68 s, 1080p60, 22 MB), `assets/hero.gif`, `assets/showcase_poster.jpg`. Master (134 MB) is in `.cache/`, ignored. |
+| Cinematic renderer (`src/aedrover/viz`) | Done: recorded episodes replayed through MuJoCo 3.14's PBR (Filament) renderer, including the AED drone and the rover-versus-drone dispatch shot. See `docs/RENDERING.md`. |
+| Media | `assets/showcase.mp4` (87 s, 1080p60, 27 MB), `assets/hero.gif`, `assets/showcase_poster.jpg`. Master (172 MB) is in `.cache/`, ignored. |
 | Live views | `scripts/live_cinematic.py` (dressed scene, plays back a freshly simulated episode in real time) and `scripts/live_viewer.py` (MuJoCo's plain viewer). |
-| Tests | About 235. `pytest -m "not slow and not gpu" -n auto` is the CI set; `gpu` tests run locally only. |
+| Tests | About 300. `pytest -m "not slow and not gpu" -n auto` is the CI set; `gpu` tests run locally only. |
 | NMIMS export | `scripts/export_nmims.py` builds `dist/nmims/Group_03_Kashish_Vaishnavi` and passes the course audit. It has **not** been applied to the course repo. It predates the inertia fix and the new assets. |
 
 ## 2. Things to know before you start
@@ -104,44 +104,35 @@ labelled as not comparable with `results/`.
 **Acceptance.** See section 6, plus: the rover is physically stopped by a parked car; lidar returns hit it; the episode
 outcome reports a collision when expected; the live window runs a full episode without a pre-simulation pass.
 
-## 5. Task B: drone visuals and a rover-vs-drone shot
+## 5. Task B: drone visuals and a rover-vs-drone shot (done 2026-10-01)
 
-**Goal.** Draw the simulated AED quadrotor with the same quality as the rover and add a shot (or short sequence) of the
-rover and the drone dispatched together, with captions driven by `results/`.
+**What exists now.**
 
-**What exists.** `src/aedrover/drone`: `quadrotor_mjcf.py` (`QuadParams`, `build_mjcf`, `QuadSim`), `flight_ctrl.py`,
-`wind.py`, `energy.py`, `mission.py` (`simulate_mission`, `mission_time_s`, `time_to_scene_s`, `can_reach`,
-`p_available`). `docs/DRONE_COMPARATOR.md` lists every parameter and which are assumptions (60 s launch latency,
-10 m/s wind limit, 15 m/s cruise, 50 m altitude). The clinical comparison is in `results/clinical_dispatch_policies.csv`
-and `results/clinical_survival_vs_radius.csv`.
+* `drone/mission.py`: `simulate_mission(..., trace=[])` appends `(t, pos, quat, rotor thrusts)` per control tick; with
+  `trace=None` nothing changes.
+* `viz/drone_recording.py`: `DroneRecording` (save, load, `pose_at` with clamping, so the drone sits before liftoff and hovers
+  after release), `record_drone_mission`, `load_or_record`.
+* `viz/drone_visuals.py`: `dress_drone`, `DroneAnimator` (settable clock `t`, `active`), `Placement` (rigid transform of the
+  flight into the street), `DroneSpec`. `dress_scene(..., drone=spec, clear_flight_corridor=...)` draws it; both options are off
+  by default and `tests/test_drone_viz.py` hashes the default dressing to prove nothing else moved.
+* `viz/dispatch.py`: `DispatchNumbers` / `load_numbers` (everything the shot states, from code and `results/`),
+  `DispatchShot` (one beat on the shared dispatch clock), `fit_rate`, rigs `rig_aerial_follow`, `rig_head_on`, `rig_arrival`,
+  `RoverHider`. `viz/hud.py` has `draw_dispatch_hud`; `Film.render` accepts any item with `frames_from(film)`.
+* `scripts/render_showcase.py` (`dispatch_items`): two beats between the MPPI rollout shot and the results card, 87 s film, 27 MB.
 
-**Design.**
-1. *Keep the architecture: record, then replay.* The drone has its own MJCF and simulator, so do not try to merge it into
-   the rover's physics. Simulate a mission with `QuadSim` (`simulate_mission`), store its pose over time (position,
-   quaternion, rotor speeds if available), then draw it in the rover's render model as **mocap-driven visual parts**
-   (body, four arms, four rotors, AED payload, status light), the same way `people.py` poses pedestrian limbs. Add a
-   `DroneAnimator` with `bind` and `apply` like `PedAnimator`. Spin the rotors by rotating their mocap bodies.
-2. *Time alignment.* The drone flies a straight line at altitude to the patient while the rover drives the ground route.
-   Build one timeline: dispatch at t = 0, drone launch after the assumed latency, rover sets off immediately. For the
-   film, time-compress the long parts and show a clock. Use the recorded rover episode for the ground route and the drone
-   mission for the air route; both are deterministic.
-3. *Scene geometry.* The rover scene is a 3 m corridor with a road crossing; the drone flies over the dressed buildings.
-   Choose the patient location (for example the rover's goal, `scenario.x_goal`) and a launch point beyond the
-   skyline, and keep the drone above the building heights (up to about 21 m) or route it along the street.
-4. *Captions and numbers.* Show arrival times and survival from `results/clinical_*.csv` (radius 500 m or 1 km, PPO rover,
-   Larsen model, drone availability as the parameter). State that launch latency and wind limit are assumptions, and that
-   the drone is an upper bound (see `docs/DRONE_COMPARATOR.md`). Do not tune the drone to lose or to win.
-5. *Film integration.* Add a `Shot` (`viz/film.py`) with a new rig if needed (`viz/shots.py`: a high tracking shot
-   following both vehicles, or a split view), register the recording in `scripts/render_showcase.py`, and keep the film
-   under 90 s and the file near 25 MB. Update the README caption and `docs/RENDERING.md`.
+**Decisions made with the owner, and why.**
 
-**Suggested order.** (a) a `record_drone_mission` helper producing the pose arrays and a small `DroneRecording` dataclass
-with save and load (mirror `viz/recording.py`); (b) drone visuals and `DroneAnimator`, checked on stills; (c) a
-two-vehicle timeline and camera; (d) HUD additions (two clocks) and captions; (e) film shot, hero GIF decision, docs, tests.
+* The rover scene is a 36 m segment, so the film cannot show a 1 km flight. The 3D view shows the drone's last approach and the rover's
+  arrival; the HUD carries the true distances and one dispatch clock. After beat 1 there is a deliberate time skip.
+* 1 km, PPO, 4 crossings per km, Larsen model (the rows the README quotes). Rover arrival is the median travel time of the routes it
+  delivers safely (45.5% of routes); the drone arrives at `time_to_scene_s(1000)` = 166 s in still air.
+* **The clinical CSVs do not use `aedrover.drone`.** They time the drone as 30 s launch plus a straight 15 m/s flight, 1.16 min faster
+  than the simulated flight. The film clocks use the simulation, quote survival from the CSV, and say so on screen. Using the simulated
+  timing in the clinical model gives 28.5% instead of 29.7% at 1 km (`docs/DRONE_COMPARATOR.md`, section 9). The README sentence that
+  attributed the 60 s latency to the published numbers was corrected.
 
-**Acceptance.** See section 6, plus: drone visuals follow the simulated pose exactly (test the animator against the
-recorded arrays); the shown arrival times equal `mission_time_s` plus latency and the rover's recorded time; captions
-contain only values read from files.
+**Ideas not done.** A 500 m variant (one parameter), wind and gusts in the recorded flight, an ambulance marker on the timeline, a visual
+payload lowering after release (the simulation treats release as an event, so it was left out rather than invented).
 
 ## 6. Definition of done for either task
 

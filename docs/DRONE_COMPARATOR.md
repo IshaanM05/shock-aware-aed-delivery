@@ -286,3 +286,37 @@ Usage from other tracks: `time_to_scene_s(distance_m, wind_along_track_mps)` for
 drone time-to-scene (launch latency + flight), `energy_wh` and `can_reach` for the battery
 check, and `p_available(wind_samples, wind_limit_mps, rain_prob)` for the weather factor.
 Wind along the track is positive for a tailwind.
+
+## 9. How this model relates to the clinical comparison
+
+The survival numbers in `results/clinical_*.csv` do **not** use the `aedrover.drone` package. The clinical decision model
+(`src/aedrover/clinical/decision.py`, `ScenarioParams`) gives the drone a simpler timing: `drone_launch_min = 0.5` (30 s)
+plus a straight flight at `drone_speed_mps = 15`, with no climb, no descent and no acceleration limit. Nothing under
+`aedrover.clinical` imports `aedrover.drone`.
+
+| Radius | Clinical model (since dispatch) | This simulation (`time_to_scene_s`) | Difference |
+| --- | --- | --- | --- |
+| 500 m | 63.3 s | 132.9 s | 69.5 s |
+| 1000 m | 96.7 s | 166.2 s | 69.5 s |
+
+The difference is the 30 s of extra launch latency (60 s here, 30 s there) plus about 40 s for the 50 m climb, the 48 m
+descent and the acceleration limits. Using the simulated timing in the clinical model (same arrests, same seed,
+`drone_launch_min` raised by the difference, 1.16 min) moves the drone's survival at 1 km from 29.7% to 28.5% (95%
+interval 28.0 to 29.0), a gain over the ambulance of +5.2 points instead of +6.4. The conclusion (a drone that can always
+fly helps at 1 km, a rover does not) is unchanged, but the published drone numbers are slightly optimistic with respect
+to the flight simulated in this document. The sensitivity is reproduced by:
+
+```python
+import numpy as np
+from aedrover.clinical.decision import ScenarioParams, evaluate_modes, mode_times
+from aedrover.clinical.survival import get_model
+from aedrover.drone.mission import time_to_scene_s
+
+gap_min = (time_to_scene_s(1000.0) - (30.0 + 1000.0 / 15.0)) / 60
+p = ScenarioParams(radius_m=1000.0, route_factor=1.5352, drone_launch_min=0.5 + gap_min)
+samples = mode_times(2000, np.random.default_rng(0), p, modes=("ambulance", "drone"), parallel=True)
+print(evaluate_modes(samples, get_model("larsen1993"), seed=0, n_resamples=500))
+```
+
+The film's rover-versus-drone shot (`docs/RENDERING.md`) uses the clocks of this document (60 s latency plus the flown
+mission) and states the difference next to the survival figures it quotes from the CSV.
