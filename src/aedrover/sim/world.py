@@ -148,13 +148,53 @@ def build_xml(veh: VehicleParams, spec: WorldSpec | None = None, *, start_x: flo
 """
 
 
-class World:
-    """Compiled model + named-id caches + slot editing helpers."""
+FURNITURE_RGBA = "0.55 0.32 0.22 1"
+FURNITURE_FRICTION = 0.8
 
-    def __init__(self, veh: VehicleParams | None = None, spec: WorldSpec | None = None, **spawn):
+
+def furniture_xml(furniture) -> str:
+    """Static, collidable box proxies for rich-world street furniture (``sim.furniture``), one geom per proxy.
+
+    Each box spans from the road surface (z = 0) to the item's top, so nothing can slip or climb under it, and sits
+    in geom group 0, which the lidar sees. Colour is ``rgba`` only: the render model replaces every material.
+    """
+    lines = []
+    for i, item in enumerate(furniture):
+        for k, (x, y, yaw, hx, hy, top) in enumerate(item.world_boxes()):
+            lines.append(
+                f'    <geom name="fur{i}_{k}" type="box" pos="{x:.9g} {y:.9g} {top / 2:.9g}" '
+                f'size="{hx:.9g} {hy:.9g} {top / 2:.9g}" euler="0 0 {yaw:.9g}" rgba="{FURNITURE_RGBA}" '
+                f'friction="{FURNITURE_FRICTION} 0.005 0.0001" group="{GROUP_WORLD}" contype="1" conaffinity="1"/>')
+    return "\n".join(lines)
+
+
+def build_xml_rich(veh: VehicleParams, spec: WorldSpec | None = None, furniture=(), **spawn) -> str:
+    """``build_xml`` plus static furniture proxies injected before the end of the worldbody.
+
+    With no furniture this is ``build_xml`` itself, byte for byte (the benchmark world is never touched).
+    """
+    xml = build_xml(veh, spec, **spawn)
+    if not furniture:
+        return xml
+    tail = "  </worldbody>"
+    if xml.count(tail) != 1:
+        raise ValueError("the world MJCF no longer has exactly one worldbody end to inject furniture before")
+    return xml.replace(tail, furniture_xml(furniture) + "\n" + tail, 1)
+
+
+class World:
+    """Compiled model + named-id caches + slot editing helpers.
+
+    ``furniture`` (rich-world mode, see ``sim.furniture``) adds static collision proxies to the MJCF; without it the
+    model is the unchanged benchmark world. Unlike the slots, furniture is fixed at compile time, which is why a rich
+    world is compiled per scenario.
+    """
+
+    def __init__(self, veh: VehicleParams | None = None, spec: WorldSpec | None = None, *, furniture=None, **spawn):
         self.veh = veh or VehicleParams()
         self.spec = spec or WorldSpec()
-        self.xml = build_xml(self.veh, self.spec, **spawn)
+        self.furniture = tuple(furniture or ())
+        self.xml = build_xml_rich(self.veh, self.spec, self.furniture, **spawn)
         self.model = mujoco.MjModel.from_xml_string(self.xml)
         self.data = mujoco.MjData(self.model)
         m = self.model
@@ -171,6 +211,7 @@ class World:
         self.g_ped = np.array([gid(f"ped_geom_{i}") for i in range(self.spec.n_ped)], dtype=int)
         self.m_ped = np.array([mid(f"ped_{i}") for i in range(self.spec.n_ped)], dtype=int)
         self.g_road = gid("road")
+        self.g_furniture = np.array([gid(f"fur{i}_{k}") for i, it in enumerate(self.furniture) for k in range(len(it.boxes))], dtype=int)
         self.b_chassis = bid("chassis")
         self.b_payload = bid("payload")
         self._payload_mass0 = float(m.body_mass[self.b_payload])
