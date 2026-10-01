@@ -78,8 +78,13 @@ def _scenario(rec: Recording) -> dict:
     return sc
 
 
-def dress_scene(rx: RenderXml, rec: Recording, look: Look, overlays=None) -> list:
-    """Add the full street dressing to ``rx`` for the recorded scenario; returns the per-frame animators."""
+def dress_scene(rx: RenderXml, rec: Recording, look: Look, overlays=None, drone=None, clear_flight_corridor=None) -> list:
+    """Add the full street dressing to ``rx`` for the recorded scenario; returns the per-frame animators.
+
+    ``drone`` (a ``drone_visuals.DroneSpec``) adds the AED quadrotor after everything else, so the rest of the scene is
+    unchanged. ``clear_flight_corridor = (start_xy, end_xy, margin_m)`` leaves out the distant towers that the drone's
+    flight line would pass through; the random stream is consumed identically, so nothing else moves.
+    """
     sc = _scenario(rec)
     mats = Materials(rx)
     rng = np.random.default_rng(look.seed * 1009 + int(sc["seed"]))
@@ -97,7 +102,7 @@ def dress_scene(rx: RenderXml, rec: Recording, look: Look, overlays=None) -> lis
     if sc["has_kerb"]:
         _road_paint(rx, sc, mats)
         _parked_cars(rx, sc, rng, mats)
-    _skyline(rx, sc, rng, mats)
+    _skyline(rx, sc, rng, mats, avoid=clear_flight_corridor)
     from ..sim.vehicle_mjcf import VehicleParams
     from .people import dress_obstacles, dress_people
     from .rover_visuals import dress_rover
@@ -107,6 +112,9 @@ def dress_scene(rx: RenderXml, rec: Recording, look: Look, overlays=None) -> lis
     if overlays is not None:
         from .overlays import dress_overlays
         animators.append(dress_overlays(rx, rec, overlays, mats))
+    if drone is not None:
+        from .drone_visuals import dress_drone
+        animators.append(dress_drone(rx, mats, drone))
     return animators
 
 
@@ -382,8 +390,12 @@ def _parked_cars(rx: RenderXml, sc: dict, rng: np.random.Generator, mats: Materi
 
 
 # ----------------------------------------------------------------------------------- skyline
-def _skyline(rx: RenderXml, sc: dict, rng: np.random.Generator, mats: Materials) -> None:
-    """Hazy silhouettes of distant towers so the horizon is a city, not a flat line."""
+def _skyline(rx: RenderXml, sc: dict, rng: np.random.Generator, mats: Materials, avoid=None) -> None:
+    """Hazy silhouettes of distant towers so the horizon is a city, not a flat line.
+
+    ``avoid = (start_xy, end_xy, margin_m)`` skips towers whose footprint is within ``margin_m`` of that segment
+    (the drone's flight line); every random draw is still made, so the rest of the scene is unaffected.
+    """
     cx = 0.5 * (sc["x_goal"] + STREET_X0)
     for ring, (radius, haze, hmin, hmax) in enumerate(((260.0, 0.42, 25.0, 70.0), (420.0, 0.62, 35.0, 110.0))):
         mat = mats(f"skyline_{ring}", (0.50 + 0.3 * haze, 0.38 + 0.28 * haze, 0.36 + 0.26 * haze), roughness=1.0)
@@ -393,6 +405,17 @@ def _skyline(rx: RenderXml, sc: dict, rng: np.random.Generator, mats: Materials)
             r = radius * float(rng.uniform(0.92, 1.12))
             w = float(rng.uniform(14.0, 34.0))
             h = float(rng.uniform(hmin, hmax))
-            rx.world_xml.append(geom("box", (cx + r * math.cos(ang), r * math.sin(ang), h / 2),
-                                     (w / 2, w / 2 * float(rng.uniform(0.7, 1.3)), h / 2), mat,
-                                     euler=(0.0, 0.0, ang + float(rng.uniform(-0.4, 0.4)))))
+            depth = w / 2 * float(rng.uniform(0.7, 1.3))
+            twist = float(rng.uniform(-0.4, 0.4))
+            x, y = cx + r * math.cos(ang), r * math.sin(ang)
+            if avoid is not None and _segment_distance((x, y), avoid[0], avoid[1]) < math.hypot(w / 2, depth) + avoid[2]:
+                continue
+            rx.world_xml.append(geom("box", (x, y, h / 2), (w / 2, depth, h / 2), mat, euler=(0.0, 0.0, ang + twist)))
+
+
+def _segment_distance(p, a, b) -> float:
+    """Distance from point ``p`` to the segment ``a``-``b`` (all 2-D)."""
+    p, a, b = (np.asarray(v, float) for v in (p, a, b))
+    ab = b - a
+    t = float(np.clip((p - a) @ ab / max(float(ab @ ab), 1e-12), 0.0, 1.0))
+    return float(np.linalg.norm(p - (a + t * ab)))
