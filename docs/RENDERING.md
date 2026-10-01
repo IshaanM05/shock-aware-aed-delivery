@@ -132,6 +132,8 @@ skipped. Filament's Python API lives under `mujoco.experimental` and may change.
 ```bash
 python scripts/live_cinematic.py                      # the simulation and the renderer run together, in a window
 python scripts/live_cinematic.py --rich               # the same, in a street whose furniture is physical
+python scripts/live_cinematic.py --drone              # the rover and the AED drone together, both simulated live
+python scripts/live_cinematic.py --drone --record dispatch.mp4   # the same run, no window, fixed time step, written to a video
 python scripts/live_cinematic.py --replay             # simulate each episode first, then play it back
 python scripts/live_viewer.py --rich                  # MuJoCo's plain viewer on the rich world (a window per episode)
 ```
@@ -144,6 +146,17 @@ low-pass of the pedestrian's velocity (time constant 0.3 s) and accumulates the 
 ribbon needs the future, so it is not drawn live. A planner slower than real time (MPPI) runs slower than real time and the HUD says
 by how much; `--replay` keeps the earlier pre-simulated playback for that case. On the reference laptop the render loop alone runs
 at about 50 frames per second without the window; the Tk window is what limits it.
+
+**A live drone** (`--drone`). The AED quadrotor is simulated live as well: `drone.mission.MissionStepper` advances the same mission
+as `simulate_mission` one 8 ms control tick at a time (a test checks that its release time and trajectory are identical), in the
+drone's own MuJoCo model with its cascaded flight controller, and `LiveDroneAnimator` draws whatever state it has reached, with the
+rotor angles accumulated tick by tick. It is dispatched at the same moment as the rover and leaves from the rover's own start, one metre
+to its right, bound for the same goal, so the two are in the picture together from the first frame. The 36 m street cannot hold the
+1 km clinical comparison, so the mission is scaled to it (a 36 m flight at a 6 m cruise altitude by default, `--drone-distance` and
+`--drone-altitude` change it): same physics and controller, different distances, and the footnote on screen says so. The camera
+(`camera.watch_both`) stands at the patient's end of the street looking back, so both vehicles come toward it and grow; a camera
+behind the rover kept losing a 1.4 m drone that is 20 to 60 m ahead. `--record` runs the same session with a fixed time step and
+writes it to a video instead of opening a window.
 
 **Rich world** (`sim/furniture.py`, `AEDRoverEnv(rich=True)`). Opt-in and separate from the benchmark: parked cars, rows of
 motorbikes, stalls, lamp posts and tree trunks are static collision boxes from the road up, placed by a pure function of the scenario

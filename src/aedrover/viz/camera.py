@@ -71,3 +71,25 @@ def chase(pos, yaw: float, *, back: float = 4.2, height: float = 1.5, swing_deg:
     cam = p + np.array([-back * np.cos(a), -back * np.sin(a), height])
     tgt = p + np.array([ahead * np.cos(yaw), ahead * np.sin(yaw), target_z])
     return CameraPose(tuple(cam), tuple(tgt), fovy)
+
+
+def watch_both(rover_pos, drone_pos, goal_xy, heading: float, progress: float, *, start: float = 12.0, end: float = 7.0,
+               height: float = 2.8, side: float = 1.2, fovy: float = 64.0, lift: float = 0.5, shift: float = 1.2,
+               aim_up: float = 1.4) -> CameraPose:
+    """A camera at the patient's end of the street looking back down it, while a rover and a drone come toward it.
+
+    The camera stands ``start`` metres beyond the goal (along ``heading``) and eases to ``end`` as ``progress`` goes 0 to 1, a
+    little to the right of the street axis. Both vehicles approach it and grow in the picture, the rover on the ground and the
+    drone above it; the sun is behind this camera, so they are front-lit. It looks at a point ``lift`` of the way from the
+    rover to the drone, moved ``shift`` metres right of the axis (as seen from the camera) and ``aim_up`` metres up, so the
+    action sits low and right in the picture, clear of a HUD panel in the top-left corner.
+    """
+    r, d = np.asarray(rover_pos, float), np.asarray(drone_pos, float)
+    h = np.array([np.cos(heading), np.sin(heading), 0.0])
+    left = np.array([-np.sin(heading), np.cos(heading), 0.0])
+    e = float(np.clip(progress, 0.0, 1.0))
+    e = e * e * (3 - 2 * e)
+    dist = start + (end - start) * e
+    cam = np.array([goal_xy[0], goal_xy[1], 0.0]) + dist * h - side * left + np.array([0.0, 0.0, height])
+    target = r + lift * (d - r) + np.array([0.0, 0.0, aim_up]) - shift * left            # looking back (-heading): the right of the picture is +left
+    return CameraPose(tuple(cam), tuple(target), fovy)

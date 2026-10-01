@@ -200,3 +200,94 @@ def test_a_live_scene_follows_the_running_simulation_and_renders_it():
         scene.close()
     assert frames[0].shape == (180, 320, 3) and 20 < frames[0].mean() < 235
     assert np.abs(frames[0].astype(int) - frames[1].astype(int)).mean() > 1.0                # the rover and its surroundings moved
+
+
+# ------------------------------------------------------------------------------------ a live drone
+def _live_drone_model(env, placement):
+    from aedrover.viz.live import idle_drone_spec
+
+    rec = header_recording(env, "optimized")
+    rx = RenderXml(rec.xml, load_look(), (320, 180))
+    rx.add_base()
+    animators = live_dressing(rx, rec, load_look(), OverlayConfig(ribbon=False, rollouts=False), idle_drone_spec(placement))
+    model = mujoco.MjModel.from_xml_string(rx.build(), rx.files)
+    for a in animators:
+        a.bind(model, rec)
+    return model, mujoco.MjData(model), animators
+
+
+def test_the_live_drone_is_drawn_where_the_stepper_has_it_and_spins_its_rotors():
+    from aedrover.drone.mission import MissionParams, MissionStepper
+    from aedrover.drone.quadrotor_mjcf import quat_to_rot
+    from aedrover.viz.drone_visuals import BODY, LEDS, MOUNT_Z, ROTOR, LiveDroneAnimator, Placement
+
+    env = AEDRoverEnv(obs_mode="dict", veh=VEH)
+    env.reset(seed=5021, options={"family": "crowded"})
+    pl = Placement.arriving_at((36.0, -1.0), 36.0)
+    model, data, animators = _live_drone_model(env, pl)
+    anim = next(a for a in animators if isinstance(a, LiveDroneAnimator))
+    assert not any(type(a).__name__ == "DroneAnimator" for a in animators)                  # the recorded-path animator was swapped out
+    st = MissionStepper(36.0, mp=MissionParams(cruise_alt_m=6.0))
+    bid = lambda n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, n)   # noqa: E731
+    last_angles = np.zeros(4)
+    for second in (2.0, 5.0, 9.0):
+        before = st.t
+        st.advance_to(second)
+        s = st.state()
+        anim.set_state(s.pos, s.quat, st.rotor_thrusts(), st.t - before, st.released)
+        anim.apply_live(data, None)
+        mujoco.mj_kinematics(model, data)
+        assert np.allclose(data.xpos[bid(BODY)], pl.point(s.pos), atol=1e-9)
+        want_q = pl.quat
+        rot = quat_to_rot(np.array([want_q[0] * s.quat[0] - want_q[3] * s.quat[3], want_q[0] * s.quat[1] - want_q[3] * s.quat[2],
+                                    want_q[0] * s.quat[2] + want_q[3] * s.quat[1], want_q[0] * s.quat[3] + want_q[3] * s.quat[0]]))
+        for k in range(4):
+            hub = pl.point(s.pos) + rot @ np.array([*anim.spec.quad.rotor_xy()[k], MOUNT_Z])
+            assert np.allclose(data.xpos[bid(ROTOR.format(k=k))], hub, atol=1e-9), (second, k)
+        angles = np.abs(anim._live_phase)
+        assert (angles > last_angles).all()                                                  # the rotors keep turning
+        last_angles = angles
+        assert data.xpos[bid(LEDS[0])][2] > 0 and data.xpos[bid(LEDS[1])][2] < -10           # amber until the AED is released
+    st.advance_to(st.t_release + 1.0 if st.released else 30.0)
+    anim.set_state(st.state().pos, st.state().quat, st.rotor_thrusts(), 0.5, st.released)
+    anim.apply_live(data, None)
+    mujoco.mj_kinematics(model, data)
+    assert st.released and data.xpos[bid(LEDS[1])][2] > 0 and data.xpos[bid(LEDS[0])][2] < -10
+
+
+def test_a_live_scene_with_a_drone_parks_it_until_the_first_update(env):
+    from aedrover.viz.drone_visuals import BODY, Placement
+
+    model, data, animators = _live_drone_model(env, Placement())
+    from aedrover.viz.live import LiveDroneAnimator
+    anim = next(a for a in animators if isinstance(a, LiveDroneAnimator))
+    anim.apply(data, 0.0)                                                                  # what RenderScene does while building
+    mujoco.mj_kinematics(model, data)
+    assert data.xpos[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, BODY)][2] < -10
+
+
+def test_the_goal_side_camera_looks_back_down_the_street_and_dollies_in():
+    from aedrover.viz.camera import watch_both
+
+    rover, drone = np.array([10.0, 0.2, 0.3]), np.array([22.0, -1.0, 5.0])
+    far = watch_both(rover, drone, (36.0, 0.0), 0.0, 0.0)
+    near = watch_both(rover, drone, (36.0, 0.0), 0.0, 1.0)
+    assert far.pos[0] == pytest.approx(36.0 + 12.0) and near.pos[0] == pytest.approx(36.0 + 7.0)       # beyond the goal, closer later
+    for cam in (far, near):
+        assert cam.pos[0] > 36.0 and abs(cam.pos[1]) < 2.0 and 2.0 < cam.pos[2] < 4.0               # inside the street, at eye height
+        f = cam.forward
+        assert f[0] < -0.9                                                                          # looking back toward the start
+        assert rover[0] < cam.target[0] < drone[0] + 1e-9 and cam.target[2] > 1.0
+    turned = watch_both(rover, drone, (36.0, 0.0), np.pi, 0.0)                                      # the camera is placed along the heading
+    assert turned.pos[0] == pytest.approx(36.0 - 12.0)
+
+
+def test_the_dispatch_hud_shows_en_route_and_the_live_shock_gauge():
+    from aedrover.viz import hud
+
+    st = hud.DispatchHud(clock_s=7.0, drone_frac=0.3, rover_frac=0.2, drone_text="25 m to go", rover_text="29 m to go",
+                         drone_arrival_s=15.0, rover_arrival_s=float("nan"), title="t", caption="c", footnote="f", shock=0.8, peak=1.1)
+    frame = hud.draw_dispatch_hud(np.zeros((360, 640, 3), np.uint8), st)
+    assert frame.shape == (360, 640, 3) and frame.max() > 0
+    bare = hud.draw_dispatch_hud(np.zeros((360, 640, 3), np.uint8), hud.DispatchHud(**{**st.__dict__, "shock": None}))
+    assert (frame != bare).any()                                                                    # the gauge adds something to the picture

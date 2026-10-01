@@ -193,6 +193,9 @@ class DispatchHud:
     result_rows: tuple[tuple[str, str, tuple[int, int, int]], ...] = ()    # (label, value, colour)
     result_note: str = ""
     result_alpha: float = 0.0
+    shock: float | None = None                    # live runs: the rover's payload shock now, its peak and the budget [g]
+    peak: float = 0.0
+    budget: float = 3.0
 
 
 def mmss(seconds: float) -> str:
@@ -231,7 +234,8 @@ def draw_dispatch_hud(frame: np.ndarray, st: DispatchHud, alpha: float = 1.0) ->
         d.text((m + int(10 * s), y - int(6 * s)), label, font=font("semibold", int(30 * s)), fill=(*INK, a))
         _bar(d, bx, y + int(4 * s), bw, bh, frac, colour, 1.0, a, s)
         d.text((bx + bw + int(22 * s), y - int(10 * s)), note, font=font("regular", int(25 * s)), fill=(*MUTED, a))
-        d.text((bx + bw + int(22 * s), y + int(24 * s)), f"arrives {mmss(arrive)}", font=font("mono", int(21 * s)), fill=(*colour, a))
+        arrives = f"arrives {mmss(arrive)}" if np.isfinite(arrive) else "en route"
+        d.text((bx + bw + int(22 * s), y + int(24 * s)), arrives, font=font("mono", int(21 * s)), fill=(*colour, a))
 
     # ---- lower-left: what is being shown
     f1, f2 = font("semibold", int(40 * s)), font("regular", int(24 * s))
@@ -245,6 +249,23 @@ def draw_dispatch_hud(frame: np.ndarray, st: DispatchHud, alpha: float = 1.0) ->
     if st.footnote:
         d.rectangle([0, h - int(54 * s), w, h], fill=(*PANEL, int(170 * alpha)))
         d.text((x0 - int(12 * s), h - int(40 * s)), st.footnote, font=font("regular", int(19 * s)), fill=(*MUTED, int(235 * alpha)))
+
+    # ---- lower-right: the rover's payload shock, for live runs
+    if st.shock is not None:
+        gw = int(430 * s)
+        gx, gy = w - m - gw, h - m - cph + int(14 * s)
+        d.rounded_rectangle([gx - int(18 * s), gy - int(14 * s), gx + gw + int(18 * s), gy + cph - int(14 * s)], int(14 * s),
+                            fill=(*PANEL, int(150 * alpha)))
+        col = _shock_colour(st.shock / st.budget)
+        d.text((gx, gy - int(2 * s)), f"{st.shock:0.1f} g", font=font("semibold", int(46 * s)), fill=(*col, a))
+        d.text((gx + gw, gy + int(8 * s)), "rover payload", font=font("regular", int(22 * s)), fill=(*MUTED, a), anchor="ra")
+        d.text((gx, gy + int(56 * s)), f"peak {st.peak:0.1f} g   budget {st.budget:g} g", font=font("regular", int(21 * s)), fill=(*MUTED, a))
+        by, bh = gy + int(94 * s), int(14 * s)
+        d.rounded_rectangle([gx, by, gx + gw, by + bh], int(7 * s), fill=(255, 255, 255, int(40 * alpha)))
+        d.rounded_rectangle([gx, by, gx + max(int(gw * min(st.shock / (st.budget * 1.6), 1.0)), int(14 * s)), by + bh], int(7 * s),
+                            fill=(*col, a))
+        tick = gx + int(gw / 1.6)
+        d.rectangle([tick - 1, by - int(6 * s), tick + 1, by + bh + int(6 * s)], fill=(*INK, a))
 
     # ---- top-right: survival from the clinical rows, fading in at the end of the shot
     if st.result_alpha > 0.01 and st.result_rows:

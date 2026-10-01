@@ -187,21 +187,55 @@ class DroneAnimator:
         return pl.point(p), _qmul(pl.quat, q)
 
     def apply(self, data: mujoco.MjData, s: float = 0.0) -> None:
-        parts = [self.m_body, *self.m_rotor, *self.m_led]
         if not self.active:
-            data.mocap_pos[parts, 2] = PARK_Z
+            self._park(data)
             return
         p, q = self.pose(self.t)
+        self._place(data, p, q, self.rotor_angles(self.t), self.t >= self.t_release)
+
+    def _park(self, data: mujoco.MjData) -> None:
+        data.mocap_pos[[self.m_body, *self.m_rotor, *self.m_led], 2] = PARK_Z
+
+    def _place(self, data: mujoco.MjData, p: np.ndarray, q: np.ndarray, angles: np.ndarray, released: bool) -> None:
+        """Pose every part for an airframe at ``p`` with orientation ``q`` (scene frame), rotor angles and status light."""
         rot = quat_to_rot(q)
         data.mocap_pos[self.m_body], data.mocap_quat[self.m_body] = p, q
-        angles = self.rotor_angles(self.t)
         for k, m in enumerate(self.m_rotor):
             data.mocap_pos[m] = p + rot @ self.mounts[k]
             data.mocap_quat[m] = _qmul(q, _qz(float(angles[k])))
-        released = self.t >= self.t_release
         for j, m in enumerate(self.m_led):
             if (j == 1) == released:
                 data.mocap_pos[m] = p + rot @ LED_OFFSET
                 data.mocap_quat[m] = q
             else:
                 data.mocap_pos[m, 2] = PARK_Z
+
+
+class LiveDroneAnimator(DroneAnimator):
+    """The drone drawn from a mission that is being simulated right now (``MissionStepper``), not from a recording.
+
+    ``set_state`` takes the airframe pose in the drone's own frame, the rotor thrusts of the control tick and the time since
+    the last call; rotor angles are accumulated tick by tick the way ``DroneAnimator`` integrates a recording.
+    """
+
+    def __init__(self, spec: DroneSpec) -> None:
+        super().__init__(spec)
+        self._pos, self._quat = np.zeros(3), np.array([1.0, 0.0, 0.0, 0.0])
+        self._live_phase, self._released = np.zeros(4), False
+        self._k_thrust = float(spec.quad.k_thrust)
+
+    def set_state(self, pos: np.ndarray, quat: np.ndarray, thrust: np.ndarray, dt: float, released: bool) -> None:
+        self._pos, self._quat, self._released = np.asarray(pos, float), np.asarray(quat, float), bool(released)
+        omega = np.sqrt(np.maximum(np.asarray(thrust, float), 0.0) / self._k_thrust)
+        self._live_phase += omega * dt * SPIN_FRACTION
+
+    def apply(self, data: mujoco.MjData, s: float = 0.0) -> None:
+        """The recorded-path entry point (``RenderScene`` calls it once while building): nothing is flying yet."""
+        self._park(data)
+
+    def apply_live(self, data: mujoco.MjData, ls=None) -> None:
+        if not self.active:
+            self._park(data)
+            return
+        pl = self.spec.placement
+        self._place(data, pl.point(self._pos), _qmul(pl.quat, self._quat), self._sign * self._live_phase, self._released)

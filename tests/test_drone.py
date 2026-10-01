@@ -24,6 +24,7 @@ from aedrover.drone.flight_ctrl import (
 from aedrover.drone.mission import (
     CONTROL_DECIMATION,
     MissionParams,
+    MissionStepper,
     Trapezoid,
     energy_wh,
     is_feasible,
@@ -310,3 +311,31 @@ def test_p_available_monotone_in_wind_limit_and_bounded():
         p_available(samples, 10.0, 1.5)
     with pytest.raises(ValueError):
         p_available(np.array([np.nan]), 10.0, 0.0)
+
+
+def test_stepper_flies_the_same_mission_as_simulate_mission_and_then_hovers():
+    mp = MissionParams(cruise_alt_m=12.0)
+    trace: list = []
+    res = simulate_mission(60.0, mp=mp, trace=trace)
+    st = MissionStepper(60.0, mp=mp)
+    st.advance_to(res.flight_time_s + 4.0)
+    assert res.completed and st.reason == "" and st.released
+    assert st.t_release == pytest.approx(res.flight_time_s, abs=1e-9)
+    for row in (trace[100], trace[len(trace) // 2], trace[-1]):                      # same trajectory, tick for tick
+        s2 = MissionStepper(60.0, mp=mp)
+        s2.advance_to(row[0])
+        assert np.allclose(s2.state().pos, row[1], atol=1e-9)
+    assert np.linalg.norm(st.state().pos - np.array([60.0, 0.0, mp.release_height_m])) < 0.5       # hovering at the release point
+    assert np.linalg.norm(st.state().vel) < 0.5
+
+
+def test_stepper_refuses_an_infeasible_mission_and_reports_a_failed_flight():
+    with pytest.raises(ValueError, match="infeasible"):
+        MissionStepper(500.0, wind_mean_mps=-14.0)
+    st = MissionStepper(60.0)
+    st.sim.reset(position=(0.0, 0.0, 200.0))                                          # teleported 150 m off the reference: tracking is lost
+    st.step()
+    assert st.reason == "lost_tracking"
+    k = st.k
+    st.advance_to(st.t + 5.0)
+    assert st.k == k                                                                   # a failed flight stops stepping

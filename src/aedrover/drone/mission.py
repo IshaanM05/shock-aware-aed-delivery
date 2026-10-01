@@ -493,3 +493,91 @@ def simulate_mission(
         max_tilt_deg=math.degrees(max_tilt),
         reason=reason,
     )
+
+
+class MissionStepper:
+    """The mission of :func:`simulate_mission`, advanced one control tick at a time (for live use).
+
+    Same vehicle, controller, wind and reference plan, and the same failure checks and release test, in the same order, so
+    ``t_release`` equals ``simulate_mission(...).flight_time_s`` (a test checks this). Unlike ``simulate_mission`` it keeps
+    flying after the release: the reference stays at the release point, so the drone hovers there. ``reason`` is non-empty
+    (and stepping stops) if the flight fails.
+
+    Args: as for :func:`simulate_mission`.
+    """
+
+    def __init__(
+        self,
+        distance_m: float,
+        wind_mean_mps: float = 0.0,
+        gust_sigma_mps: float = 0.0,
+        seed: int = 0,
+        quad: QuadParams | None = None,
+        gains: ControllerGains | None = None,
+        mp: MissionParams | None = None,
+        wind_cross_mps: float = 0.0,
+        gust_tau_s: float = 5.0,
+    ) -> None:
+        self.quad = quad or QuadParams()
+        self.mp = mp or MissionParams()
+        gains = gains or ControllerGains()
+        if not is_feasible(wind_mean_mps, wind_cross_mps, self.quad, self.mp, gains):
+            raise ValueError(f"mission over {distance_m:g} m with {wind_mean_mps:g} m/s along-track wind is infeasible")
+        self.distance_m = float(distance_m)
+        self.sim = QuadSim(self.quad)
+        self.dt = CONTROL_DECIMATION * self.sim.dt
+        self.ctrl = CascadedController(self.quad, gains, self.dt)
+        self.wind = WindField(WindParams((wind_mean_mps, wind_cross_mps, 0.0), gust_sigma_mps, gust_tau_s), self.dt, seed)
+        z0 = self.quad.rest_height_m + 1e-3
+        self.plan = TrajectoryPlan(distance_m, cruise_ground_speed_mps(wind_mean_mps, self.mp), self.mp, z0)
+        self.goal = np.array([distance_m, 0.0, self.mp.release_height_m])
+        self.sim.reset(position=(0.0, 0.0, z0))
+        self.k = 0
+        self.released = False
+        self.t_release: float | None = None
+        self.reason = ""
+
+    @property
+    def t(self) -> float:
+        """Time since liftoff [s]."""
+        return self.k * self.dt
+
+    def state(self):
+        return self.sim.state()
+
+    def rotor_thrusts(self) -> np.ndarray:
+        return self.sim.rotor_thrusts()
+
+    def step(self) -> None:
+        """One control tick (8 ms)."""
+        if self.reason:
+            return
+        s, t = self.sim.state(), self.t
+        p, v, a = self.plan.sample(np.array([t]))
+        err = float(np.linalg.norm(s.pos - p[0]))
+        if not (np.all(np.isfinite(s.pos)) and np.all(np.isfinite(s.vel))):
+            self.reason = "nan"
+            return
+        if t > 3.0 and s.pos[2] < 0.5 * self.quad.rest_height_m:
+            self.reason = "crash"
+            return
+        if err > 25.0 or s.tilt_rad > math.radians(80.0):
+            self.reason = "lost_tracking"
+            return
+        if (
+            not self.released
+            and t >= self.plan.duration
+            and np.linalg.norm(s.pos - self.goal) < self.mp.release_tol_m
+            and np.linalg.norm(s.vel) < self.mp.release_speed_tol_mps
+        ):
+            self.released, self.t_release = True, t
+        w = self.wind.step()
+        force = drag_force(s.vel, w, self.quad.cd_body, self.quad.frontal_area_m2, self.quad.air_density)
+        thrusts = self.ctrl.control(s, Reference(p[0], v[0], a[0]))
+        self.sim.step(thrusts, nstep=CONTROL_DECIMATION, ext_force=force)
+        self.k += 1
+
+    def advance_to(self, t_s: float) -> None:
+        """Step until the mission clock reaches ``t_s`` (or the flight fails)."""
+        while self.t < t_s and not self.reason:
+            self.step()

@@ -202,6 +202,7 @@ python experiments/01_validate_suspension.py
 python experiments/03_controller_benchmark.py --n 10 --tag smoke --controllers pure_pursuit apf dwa
 python scripts/live_cinematic.py                        # watch a run live in a window with the cinematic look (recommended demo)
 python scripts/live_cinematic.py --rich                 # the same in a street whose parked vehicles, stalls and lamps are physical
+python scripts/live_cinematic.py --drone                # the rover and the AED drone, both simulated live, heading for the same patient
 python scripts/render_showcase.py --quality draft          # the cinematic film, 720p30 (needs a GPU with OpenGL)
 ```
 

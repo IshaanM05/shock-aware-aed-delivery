@@ -24,6 +24,8 @@ import numpy as np
 
 from .camera import CameraPose
 from .dressing import dress_scene
+from .drone_recording import DroneRecording
+from .drone_visuals import DroneAnimator, DroneSpec, LiveDroneAnimator, Placement
 from .look import Look
 from .overlays import PARK, OverlayAnimator, OverlayConfig
 from .people import N_PED_SLOTS, PARK_Z, STRIDE_M, PedAnimator
@@ -36,12 +38,24 @@ TELEPORT_M = 1.5                  # a jump this large in one update is a respawn
 
 
 @dataclass
+class DroneLive:
+    """The drone's state in its own frame at one control tick (``MissionStepper``)."""
+
+    pos: np.ndarray                       # (3,) centre of mass [m]
+    quat: np.ndarray                      # (4,) (w, x, y, z)
+    thrust: np.ndarray                    # (4,) applied rotor thrusts [N]
+    dt: float                             # seconds since the previous update (drives the drawn rotor angle)
+    released: bool                        # the mission has released the AED
+
+
+@dataclass
 class LiveState:
     t: float                              # simulated time [s]
     dt: float                             # simulated seconds since the previous update
     lidar: np.ndarray                     # (n,) lidar ranges [m]
     shock_g: float                        # recent peak payload shock [g]
     rollouts: dict | None = None          # planner snapshot: ``xy`` (K, H+1, 2) and ``best`` (H+1, 2)
+    drone: DroneLive | None = None        # a live drone, when the scene has one
 
 
 def header_recording(env, vehicle: str = "optimized", *, rollout_nodes: int | None = None) -> Recording:
@@ -137,14 +151,24 @@ class LiveOverlayAnimator(OverlayAnimator):
             self._halo_at(pos, yaw, ls.shock_g / self._budget, ls.t / max(self.rec.dt, 1e-6))
 
 
-def live_dressing(rx, rec: Recording, look: Look, cfg: OverlayConfig) -> list:
-    """The usual dressing (street, rover, people, overlays) with the animators swapped for their streaming versions."""
+def idle_drone_spec(placement: Placement) -> DroneSpec:
+    """A drone spec for a scene whose drone is simulated live: a one-sample recording on the ground, enough to build the parts."""
+    rec = DroneRecording(dt=0.008, t=np.zeros(1), pos=np.array([[0.0, 0.0, 0.05]]), quat=np.array([[1.0, 0.0, 0.0, 0.0]]),
+                         thrust=np.zeros((1, 4)), meta={"completed": True})
+    return DroneSpec(rec, placement)
+
+
+def live_dressing(rx, rec: Recording, look: Look, cfg: OverlayConfig, drone: DroneSpec | None = None) -> list:
+    """The usual dressing (street, rover, people, overlays, optionally the drone) with the animators swapped for their
+    streaming versions."""
     out = []
-    for a in dress_scene(rx, rec, look, overlays=cfg):
+    for a in dress_scene(rx, rec, look, overlays=cfg, drone=drone):
         if type(a) is PedAnimator:
             a = StreamingPedAnimator()
         elif type(a) is OverlayAnimator:
             a = LiveOverlayAnimator(a.cfg, a.pools)
+        elif type(a) is DroneAnimator:
+            a = LiveDroneAnimator(a.spec)
         out.append(a)
     return out
 
@@ -154,19 +178,23 @@ class LiveScene:
 
     def __init__(self, env, *, vehicle: str = "optimized", size: tuple[int, int] = (1280, 720), look: Look | None = None,
                  backend: str = "filament", overlays: OverlayConfig | None = None, rollout_nodes: int | None = None,
-                 depth: bool = False) -> None:
+                 depth: bool = False, drone_placement: Placement | None = None) -> None:
         self.env = env
         self.cfg = overlays or OverlayConfig(ribbon=False, rollouts=bool(rollout_nodes))
         if self.cfg.ribbon:
             raise ValueError("the recorded-path ribbon needs the future; turn it off for a live scene")
         header = header_recording(env, vehicle, rollout_nodes=rollout_nodes)
+        spec = idle_drone_spec(drone_placement) if drone_placement is not None else None
         self.scene = RenderScene(header, look=look, size=size, backend=backend, depth=depth,
-                                 builder=lambda rx, r, lk: live_dressing(rx, r, lk, self.cfg))
+                                 builder=lambda rx, r, lk: live_dressing(rx, r, lk, self.cfg, spec))
+        self.drone = next((a for a in self.scene.animators if isinstance(a, LiveDroneAnimator)), None)
         self._t_prev = 0.0
 
     def update(self, ls: LiveState) -> None:
         """Copy the simulation's current state into the render model and pose everything that is drawn from it."""
         d = self.env.world.data
+        if self.drone is not None and ls.drone is not None:
+            self.drone.set_state(ls.drone.pos, ls.drone.quat, ls.drone.thrust, ls.drone.dt, ls.drone.released)
         self.scene.set_live(d.qpos, d.mocap_pos, d.mocap_quat, ls)
         self._t_prev = ls.t
 
@@ -182,4 +210,4 @@ class LiveScene:
         self.scene.close()
 
 
-__all__ = ["LiveScene", "LiveState", "LiveOverlayAnimator", "StreamingPedAnimator", "header_recording", "live_dressing", "PARK"]
+__all__ = ["DroneLive", "LiveScene", "LiveState", "idle_drone_spec", "LiveOverlayAnimator", "StreamingPedAnimator", "header_recording", "live_dressing", "PARK"]

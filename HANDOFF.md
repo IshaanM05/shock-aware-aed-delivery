@@ -17,7 +17,7 @@ Public repo: https://github.com/IshaanM05/shock-aware-aed-delivery (branch `main
 | Clinical and drone layers | Done (`clinical`, `drone`), numbers in `results/clinical*.csv` and `docs/DRONE_COMPARATOR.md`. The clinical model times its drone more simply than the drone simulation (section 5). |
 | Cinematic renderer (`src/aedrover/viz`) | Done: recorded episodes replayed through MuJoCo 3.14's PBR (Filament) renderer, the AED drone, the rover-versus-drone dispatch shot, and a streaming path for live use. See `docs/RENDERING.md`. |
 | Media | `assets/showcase.mp4` (87 s, 1080p60, 27 MB), `assets/hero.gif`, `assets/showcase_poster.jpg`. Master (172 MB) is in `.cache/`, ignored. |
-| Live views | `scripts/live_cinematic.py` (the simulation and the dressed PBR renderer run together; `--rich`, `--replay`) and `scripts/live_viewer.py` (MuJoCo's plain viewer; `--rich`). |
+| Live views | `scripts/live_cinematic.py` (the simulation and the dressed PBR renderer run together; `--rich`, `--drone` for the rover and a live drone, `--replay`, `--record` for a windowless video) and `scripts/live_viewer.py` (MuJoCo's plain viewer; `--rich`). |
 | Tests | About 320. `pytest -m "not slow and not gpu" -n auto` is the CI set; `gpu` tests run locally only. |
 | NMIMS export | `scripts/export_nmims.py` builds `dist/nmims/Group_03_Kashish_Vaishnavi` and passes the course audit. It has **not** been applied to the course repo. It predates the inertia fix and the new assets. |
 
@@ -99,6 +99,11 @@ paired evaluation is in `docs/RICH_WORLD.md`.
   made the rover climb and bounce.
 * The analytic footprint matches the physical contact to about 1 cm (`test_driving_into_furniture_ends_in_a_furniture_collision_at_the_moment_of_contact`).
 * Live rendering has no future, so the recorded "path ahead" ribbon is not drawn live; MPPI's sampled rollouts are.
+
+**Live drone.** `--drone` adds the quadrotor, simulated live (`drone.mission.MissionStepper`, same mission as `simulate_mission`) and drawn by
+`LiveDroneAnimator`, launched from the rover's start one metre to its right toward the same goal. The mission is scaled to the 36 m street (6 m
+cruise altitude), not the 1 km clinical case; the HUD footnote says so. A camera behind the rover could not keep the small drone in frame, so
+the live camera is at the goal looking back (`camera.watch_both`).
 
 **Limits.** Nothing moves or falls over; PPO is out of distribution in this world
 (it never saw furniture) and `docs/RICH_WORLD.md` says so; MPPI cannot hold real time and the live HUD shows its speed factor; there is no worker
