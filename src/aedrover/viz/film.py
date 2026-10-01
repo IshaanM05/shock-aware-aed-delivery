@@ -132,7 +132,12 @@ class Film:
         try:
             for item in items:
                 t1 = time.perf_counter()
-                frames = self.shot_frames(item) if isinstance(item, Shot) else self.card_frames(item)
+                if isinstance(item, Shot):
+                    frames = self.shot_frames(item)
+                elif isinstance(item, Card):
+                    frames = self.card_frames(item)
+                else:                                    # any item that renders itself (see ``viz.dispatch.DispatchShot``)
+                    frames = item.frames_from(self)
                 c = 0
                 for frame in frames:
                     writer.append_data(frame)
