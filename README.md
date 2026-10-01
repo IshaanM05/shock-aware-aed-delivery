@@ -177,14 +177,15 @@ The real Mumbai route geometry is in `data/osm`; crossing density is taken as an
 | [`docs/PPO_TRAINING.md`](docs/PPO_TRAINING.md) | learning curve and held-out evaluation, regenerated automatically |
 | [`docs/REPRODUCE.md`](docs/REPRODUCE.md) | every command in order, run times and seed ranges |
 | [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) | what the study supports and what it does not |
-| [`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) | 15 silent MuJoCo pitfalls, each with a regression test |
-| [`docs/RENDERING.md`](docs/RENDERING.md) | how the cinematic renderer works (PBR backend, recorded episodes, post-processing) and its MuJoCo quirks |
+| [`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) | 17 silent MuJoCo pitfalls and platform notes, each with a regression test |
+| [`docs/RENDERING.md`](docs/RENDERING.md) | how the cinematic renderer works (PBR backend, recorded episodes, post-processing, the live view, the drone) and its MuJoCo quirks |
+| [`docs/RICH_WORLD.md`](docs/RICH_WORLD.md) | the opt-in collidable street (parked vehicles, stalls, lamps, trees) and a small paired evaluation in it; not comparable with `results/` |
 | [`HANDOFF.md`](HANDOFF.md) | state of the repository and a detailed plan for the remaining task: a collidable rich-world mode |
 | [`docs/NMIMS_EXPORT.md`](docs/NMIMS_EXPORT.md) | generating the course-template folder from this repository |
 
 ## Engineering notes worth reading
 
-[`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) records 15 MuJoCo behaviours that silently
+[`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) records 17 MuJoCo behaviours that silently
 produce wrong physics or wrong data without raising an error (for example, `mujoco.rollout` resets
 mocap bodies, which deletes all terrain from planner rollouts; `mj_multiRay`'s cutoff drops infinite
 planes; rescaling a body's inertia in place made the same seed give different episodes depending on
@@ -199,13 +200,16 @@ pip install -e ".[dev,viz]"       # add ",rl" for PPO training (PyTorch, Stable-
 pytest -m "not slow" -n auto      # about 300 tests
 python experiments/01_validate_suspension.py
 python experiments/03_controller_benchmark.py --n 10 --tag smoke --controllers pure_pursuit apf dwa
-python scripts/live_cinematic.py                        # watch a run in a window with the cinematic look (recommended demo)
+python scripts/live_cinematic.py                        # watch a run live in a window with the cinematic look (recommended demo)
+python scripts/live_cinematic.py --rich                 # the same in a street whose parked vehicles, stalls and lamps are physical
 python scripts/render_showcase.py --quality draft          # the cinematic film, 720p30 (needs a GPU with OpenGL)
 ```
 
-The cinematic look is cosmetic: kerbs, ramps, bollards, planters and pedestrian capsules are physical, while buildings,
-shops, parked vehicles and stalls are visual only, so the physics and the benchmark are unchanged. A collidable "rich-world" mode is the planned next step
-(see `docs/RENDERING.md`).
+The standard environment is unchanged by the renderer: kerbs, ramps and pedestrian capsules are physical, bollards and planters are
+checked by the rover's footprint (not by contact), and buildings, shops, parked vehicles and stalls are visual only, so the physics and
+the benchmark are untouched. An opt-in **rich-world mode** (`AEDRoverEnv(rich=True)`, `live_cinematic.py --rich`) makes parked cars,
+motorbikes, stalls, lamp posts and tree trunks collidable; it is a separate environment whose results are not comparable with
+`results/` (`docs/RICH_WORLD.md`, `docs/RENDERING.md`).
 
 Simulation, training and every experiment run on CPU; a GPU is not needed and is not used for them. A GPU is
 used only to draw the cinematic film and stills (`docs/RENDERING.md`); `scripts/render_demo.py` and

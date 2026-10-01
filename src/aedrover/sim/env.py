@@ -128,6 +128,7 @@ class AEDRoverEnv(gym.Env):
             items = ()
         if items != self.furniture:                  # only a changed street needs a new model; the benchmark world never does
             self._rebuild_world(items)
+        self.crowd.solids = self._fur                # pedestrians walk round furniture (None, i.e. no effect, in the standard world)
         self.world.apply_scenario(sc)
 
     def _rebuild_world(self, items: tuple) -> None:

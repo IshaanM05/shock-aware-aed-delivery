@@ -127,18 +127,35 @@ project reports comes from the physics simulation and the files under `results/`
 or newer and a GPU with OpenGL; elsewhere the classic backend draws a simpler image and the depth-based effects are
 skipped. Filament's Python API lives under `mujoco.experimental` and may change.
 
-## Next step: a rich-world mode
+## The live view and the rich-world mode
 
-Today the look is cosmetic by design: kerbs, ramps, bollards, planters and pedestrian capsules are physical, while
-buildings, shopfronts, parked cars and motorbikes, stalls, trees and lamps are visual only, and the live cinematic view
-(`scripts/live_cinematic.py`) plays back an episode that was simulated first. The planned next piece of work is an
-opt-in **rich-world mode**:
+```bash
+python scripts/live_cinematic.py                      # the simulation and the renderer run together, in a window
+python scripts/live_cinematic.py --rich               # the same, in a street whose furniture is physical
+python scripts/live_cinematic.py --replay             # simulate each episode first, then play it back
+python scripts/live_viewer.py --rich                  # MuJoCo's plain viewer on the rich world (a window per episode)
+```
 
-* make selected street furniture collidable (parked vehicles and bikes, stalls, lamp posts, tree trunks) as extra
-  physics bodies, so the rover and the controllers must really avoid them;
-* step the simulation and the renderer together, so a live run is truly live, with no pre-simulation pass;
-* keep it separate from the benchmark: its scenarios and results are not comparable with `results/`, and it must
-  never change the standard environment, its seeds or its numbers.
+**Live, with no recording in between** (`viz/live.py`). Each frame the simulation is stepped until its clock catches up with the
+wall clock, the simulation's state (`qpos` and mocap poses) is copied into the render model, and that state is drawn. The recorded
+animators look at the whole episode, so the live path has causal versions: `StreamingPedAnimator` takes the heading from a
+low-pass of the pedestrian's velocity (time constant 0.3 s) and accumulates the stride phase as the pedestrian walks, and
+`LiveOverlayAnimator` draws the halo, the lidar bubble and MPPI's sampled rollouts from the live state. The recorded "path ahead"
+ribbon needs the future, so it is not drawn live. A planner slower than real time (MPPI) runs slower than real time and the HUD says
+by how much; `--replay` keeps the earlier pre-simulated playback for that case. On the reference laptop the render loop alone runs
+at about 50 frames per second without the window; the Tk window is what limits it.
 
-Open questions: how the planners and the safety filter perceive the new obstacles (lidar already sees any collidable
-geom), and how to animate the pedestrians' limbs incrementally instead of from a whole recorded episode.
+**Rich world** (`sim/furniture.py`, `AEDRoverEnv(rich=True)`). Opt-in and separate from the benchmark: parked cars, rows of
+motorbikes, stalls, lamp posts and tree trunks are static collision boxes from the road up, placed by a pure function of the scenario
+(its own random stream, so no scenario draw moves) where a footpath really has them, encroaching on the footway by at most 1.2 m so a
+1.6 m lane always stays free. The lidar sees them (so do the safety filter, DWA, APF and PPO's observation), the clearance and outcome
+checks count them (`collision_kind = "furniture"`), and MPPI plans in a world with the same boxes. The model is compiled per
+scenario (about 14 ms), so `env.world` changes at `reset` and anything that held it across a reset must read it again. The dressing
+draws every item exactly on its collision boxes (`dress_scene` reads `rec.meta["furniture"]`) and hides the boxes, so what you see is
+what collides; the street's other, purely visual furniture stays where it was. Results in this mode are not comparable with
+`results/`; a small paired evaluation is in `docs/RICH_WORLD.md`.
+
+Pedestrians walk round the furniture: the social-force crowd gets the boxes as solids (repulsion with a sidestep along the surface,
+which stops a pedestrian walking straight at a stall from stalling against it, and a hard push-out so nobody overlaps a box). In the
+standard world that code does not run. Not in the rich world: nothing moves or falls over, and the layout rule keeps every scenario
+solvable.

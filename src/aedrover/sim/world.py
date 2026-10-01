@@ -17,7 +17,10 @@ long, ramps 3 m, obstacles come in two fixed kinds) and is only ever moved or ro
 
 Body-level contype/conaffinity are also aggregated at compile time, so a slot compiled with
 ``contype=0`` is filtered out at the body level no matter what is written into ``geom_contype``
-later. All slots are compiled collidable and "deactivated" by parking them 50 m below the road.
+later. The slabs, ramps and pedestrian capsules are therefore compiled collidable and "deactivated" by parking them 50 m below
+the road. The obstacle slots are the exception: they are compiled ``contype=0``, so a bollard or planter is never touched by
+contact; "collision" with one is the analytic footprint test in ``AEDRoverEnv._clearance`` (the lidar still sees them).
+Rich-world street furniture (``sim/furniture.py``) is static and collidable, compiled per scenario by ``build_xml_rich``.
 
 Layout along +x (heights above the road surface at z = 0):
 

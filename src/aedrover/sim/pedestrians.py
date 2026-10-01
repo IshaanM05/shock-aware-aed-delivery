@@ -50,6 +50,9 @@ class PedestrianCrowd:
         self.v_des = np.zeros(0)
         self.aware = np.zeros(0, dtype=bool)
         self.z_surface = np.zeros(0)
+        # Rich-world furniture as ``(M, 5)`` boxes ``(x, y, yaw, hx, hy)``: pedestrians walk round them. ``None`` in the
+        # standard world, where none of the code below runs, so benchmark episodes are untouched.
+        self.solids: np.ndarray | None = None
 
     def reset(self, specs: list[PedSpec], rng: np.random.Generator) -> None:
         self.n = len(specs)
@@ -103,6 +106,8 @@ class PedestrianCrowd:
         force[:, 1] += p.a_wall * np.exp((-(wall_y + self.pos[:, 1]) + PED_R) / p.b_wall)
         force[:, 1] -= p.a_wall * np.exp((-(wall_y - self.pos[:, 1]) + PED_R) / p.b_wall)
 
+        if self.solids is not None:
+            force += self._solid_force(e)
         self.vel += dt * force
         if 'hold' in locals() and hold.any():
             self.vel[hold] = 0.0
@@ -112,4 +117,48 @@ class PedestrianCrowd:
         self.vel *= scale[:, None]
         self.pos += dt * self.vel
         np.clip(self.pos[:, 1], -SIDEWALK_HALF_WIDTH + PED_R, SIDEWALK_HALF_WIDTH - PED_R, out=self.pos[:, 1])
+        if self.solids is not None:
+            self._push_out_of_solids()
         _ = robot_vel_xy  # reserved for a velocity-dependent robot repulsion term
+
+
+    # -------------------------------------------------------------------- rich-world furniture
+    def _solid_geometry(self):
+        """For every pedestrian and box: the world-frame unit vector pointing from the box to the pedestrian, its distance
+        to the box (0 when inside) and how deep inside it is (0 when outside); arrays of shape ``(n, M)``."""
+        bx, by, byaw, bhx, bhy = self.solids.T
+        c, s = np.cos(byaw), np.sin(byaw)
+        dx, dy = self.pos[:, None, 0] - bx[None], self.pos[:, None, 1] - by[None]
+        lx, ly = c * dx + s * dy, -s * dx + c * dy                       # the pedestrian in each box's frame
+        qx, qy = np.clip(lx, -bhx, bhx), np.clip(ly, -bhy, bhy)          # the closest point of the box
+        vx, vy = lx - qx, ly - qy
+        d = np.hypot(vx, vy)
+        inside = d < 1e-9
+        px, py = bhx - np.abs(lx), bhy - np.abs(ly)                      # penetration along each axis when inside
+        along_x = px < py
+        vx = np.where(inside, np.where(along_x, np.where(lx >= 0, 1.0, -1.0), 0.0), vx)
+        vy = np.where(inside, np.where(along_x, 0.0, np.where(ly >= 0, 1.0, -1.0)), vy)
+        depth = np.where(inside, np.minimum(px, py), 0.0)
+        norm = np.maximum(np.hypot(vx, vy), 1e-9)
+        ux, uy = vx / norm, vy / norm
+        return c * ux - s * uy, s * ux + c * uy, d, depth
+
+    def _solid_force(self, e_goal: np.ndarray) -> np.ndarray:
+        """Repulsion from every box plus a sidestep along its surface, toward the way the pedestrian is heading and,
+        failing that, toward the side it already leans to; without the sidestep a pedestrian walking straight at a
+        box stalls against it (the usual social-force local minimum)."""
+        wx, wy, d, _ = self._solid_geometry()
+        mag = 3.0 * self.p.a_wall * np.exp((PED_R - d) / self.p.b_wall)
+        centre = self.pos[:, None, :] - self.solids[None, :, :2]
+        lean = centre / np.maximum(np.linalg.norm(centre, axis=2, keepdims=True), 1e-9)
+        toward = e_goal[:, None, :] + 0.5 * lean
+        tx, ty = -wy, wx                                                 # a unit tangent; its opposite is the other way round
+        flip = np.where(tx * toward[..., 0] + ty * toward[..., 1] >= 0.0, 1.0, -1.0)
+        return np.stack([np.sum(mag * (wx + 0.8 * flip * tx), axis=1), np.sum(mag * (wy + 0.8 * flip * ty), axis=1)], axis=1)
+
+    def _push_out_of_solids(self) -> None:
+        """Hard constraint behind the soft repulsion: nobody ends a step overlapping a box."""
+        wx, wy, d, depth = self._solid_geometry()
+        push = np.maximum(PED_R + depth - d, 0.0) * (d < PED_R + 1e-9)
+        self.pos[:, 0] += np.sum(push * wx, axis=1)
+        self.pos[:, 1] += np.sum(push * wy, axis=1)

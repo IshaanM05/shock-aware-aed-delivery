@@ -232,3 +232,61 @@ def test_mppi_steers_round_furniture_that_stops_pure_pursuit_and_never_touches_i
             break
     ep = info["episode"]
     assert ep["outcome"] == "goal" and ep["min_clearance_m"] > 0
+
+
+def test_obstacle_slots_are_analytic_only():
+    """Engineering note 16: bollards and planters are never touched by contact, only by the analytic footprint test."""
+    w = World(VEH)
+    assert (w.model.geom_contype[w.g_obs] == 0).all() and (w.model.geom_conaffinity[w.g_obs] == 0).all()
+    assert (w.model.geom_contype[w.g_ped] != 0).all()                                # pedestrians, by contrast, are collidable capsules
+
+
+# ------------------------------------------------------------------------------- pedestrians
+def _walker(solids):
+    from aedrover.sim.pedestrians import PedestrianCrowd
+    from aedrover.sim.scenario import PedSpec
+
+    crowd = PedestrianCrowd()
+    crowd.reset([PedSpec(start=(2.0, 0.0), goal=(12.0, 0.0), v_des=1.3, aware=False, z_surface=0.0, origin=(2.0, 0.0))],
+                np.random.default_rng(0))
+    crowd.solids = solids
+    return crowd
+
+
+def test_pedestrians_walk_round_furniture_and_only_when_it_is_there():
+    from aedrover.sim.pedestrians import PED_R
+
+    box = np.array([[6.0, 0.3, 0.0, 0.7, 0.4]])                                       # a stall on the walker's line (y from -0.1 to 0.7)
+    free, blocked = _walker(None), _walker(box)
+    nearest, passed_beside, far_free, far_blocked = np.inf, False, 0.0, 0.0
+    for _ in range(1200):
+        free.step(0.02, np.array([-50.0, 0.0]), np.zeros(2))
+        blocked.step(0.02, np.array([-50.0, 0.0]), np.zeros(2))
+        far_free, far_blocked = max(far_free, float(free.pos[0, 0])), max(far_blocked, float(blocked.pos[0, 0]))
+        _, _, d, depth = blocked._solid_geometry()
+        nearest = min(nearest, float((d - depth).min()))
+        passed_beside |= bool(abs(blocked.pos[0, 0] - 6.0) < 0.2 and blocked.pos[0, 1] < -0.1 - PED_R + 1e-6)
+    assert nearest >= PED_R - 1e-6                                                      # never overlaps the stall
+    assert far_blocked > 11.0 and far_free > 11.0                                       # both reach the far end (then respawn) ...
+    assert passed_beside                                                                # ... the blocked one by going round it
+
+
+def test_the_standard_crowd_has_no_solids_and_a_rich_one_keeps_pedestrians_out_of_every_proxy():
+    plain = AEDRoverEnv(veh=VEH, obs_mode="dict")
+    plain.reset(seed=5021, options={"family": "crowded"})
+    assert plain.crowd.solids is None
+    rich = AEDRoverEnv(veh=VEH, obs_mode="dict", rich=True)
+    rich.reset(seed=5021, options={"family": "crowded"})
+    assert rich.crowd.solids is rich._fur and rich._fur is not None
+    ctrl = make_controller("dwa", v_cruise=2.0)
+    ctrl.reset(rich)
+    from aedrover.sim.pedestrians import PED_R
+    worst = np.inf
+    for _ in range(1500):
+        v, d = ctrl.act(rich.obs)
+        _, _, term, trunc, _ = rich.step(np.array([v, d]))
+        _, _, dist, depth = rich.crowd._solid_geometry()
+        worst = min(worst, float((dist - depth).min()))
+        if term or trunc:
+            break
+    assert worst >= PED_R - 1e-6
