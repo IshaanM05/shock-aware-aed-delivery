@@ -16,6 +16,7 @@ import gymnasium as gym
 import mujoco
 import numpy as np
 
+from .furniture import footprint_gap, place_furniture, proxy_array
 from .metrics import G, ShockResult, rover_shock
 from .pedestrians import PED_R, ROBOT_HALF_L, ROBOT_HALF_W, PedestrianCrowd, SFMParams
 from .rover import Rover
@@ -49,10 +50,16 @@ class AEDRoverEnv(gym.Env):
                  delta_max: float = 0.5, perception: PerceptionSpec | None = None,
                  sfm: SFMParams | None = None, reward: RewardConfig | None = None,
                  obs_mode: str = "vector", render_size: tuple[int, int] = (480, 640),
-                 log_every: int = 2, ped_every: int = 1):
+                 log_every: int = 2, ped_every: int = 1, rich: bool = False, rich_density: float = 1.5):
         super().__init__()
         self.family = family
         self.veh0 = veh or VehicleParams()
+        # Rich-world mode (``sim.furniture``): collidable street furniture, compiled per scenario. Off by default;
+        # with it off nothing below differs from the benchmark environment.
+        self.rich, self.rich_density = rich, rich_density
+        self._world_spec, self._perception_spec, self._control_dt, self._log_every = world_spec, perception, control_dt, log_every
+        self.furniture: tuple = ()
+        self._fur: np.ndarray | None = None
         self.world = World(self.veh0, world_spec)
         self.rover = Rover(self.world, control_dt=control_dt, log_every=log_every)
         self.ped_every = ped_every
@@ -91,7 +98,7 @@ class AEDRoverEnv(gym.Env):
             n_ped_max=self.world.spec.n_ped, n_obs_max=self.world.spec.n_obstacle,
             **options.get("scenario_kwargs", {}))
         self.scenario = sc
-        self._configure_world(sc)
+        self._configure_world(sc, options.get("furniture"))
         self.rover.reset(0.0, sc.start_y, sc.surface_z(0.0), yaw=sc.start_yaw, settle_s=0.4)
         rng = np.random.default_rng(sc.seed + 7919)
         self._rng = rng
@@ -112,8 +119,22 @@ class AEDRoverEnv(gym.Env):
         self._update_obs()
         return self._obs_out(), {"scenario": sc.to_dict()}
 
-    def _configure_world(self, sc: Scenario) -> None:
+    def _configure_world(self, sc: Scenario, furniture=None) -> None:
+        if self.rich or furniture is not None:
+            items = tuple(furniture) if furniture is not None else tuple(place_furniture(sc, density=self.rich_density))
+            if items != self.furniture:
+                self._rebuild_world(items)
         self.world.apply_scenario(sc)
+
+    def _rebuild_world(self, items: tuple) -> None:
+        """Compile a world with ``items`` as static collision proxies. Rover and perception hold the model, so they are
+        rebuilt with it: anything that kept ``env.world`` across a ``reset`` (a viewer, say) must read it again."""
+        self.close()
+        self.furniture, self._fur = items, proxy_array(items)
+        self.world = World(self.veh0, self._world_spec, furniture=items)
+        self.rover = Rover(self.world, control_dt=self._control_dt, log_every=self._log_every)
+        self.perc = Perception(self.world.model, self.world.data, self.world.b_chassis, self.veh0.nominal_height,
+                               self._perception_spec)
 
     def _sync_peds(self) -> None:
         for i in range(self.crowd.n):
@@ -190,6 +211,12 @@ class AEDRoverEnv(gym.Env):
             d = float(gap(np.array([ob.x]), np.array([ob.y]), OBS_SIZES[ob.slot % 2][0])[0])
             if d < best:
                 best, kind = d, "obstacle"
+        if self._fur is not None:
+            near = self._fur[np.hypot(self._fur[:, 0] - xy[0], self._fur[:, 1] - xy[1]) < 6.0]
+            if len(near):
+                d = float(footprint_gap(xy[0], xy[1], yaw, near, ROBOT_HALF_L, ROBOT_HALF_W).min())
+                if d < best:
+                    best, kind = d, "furniture"
         self._nearest_kind = kind
         return best
 

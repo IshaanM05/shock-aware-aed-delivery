@@ -26,7 +26,7 @@ import numpy as np
 
 from .scenario import CORRIDOR_HALF_WIDTH, FAMILIES, Scenario
 
-MAX_INTRUSION_M = 1.0          # furthest an item reaches into the corridor from its edge
+MAX_INTRUSION_M = 1.2          # furthest an item reaches into the corridor from its edge
 MIN_CLEAR_LANE_M = 1.6         # lane that must stay free at every x (the rover is 0.72 m wide)
 SIDE_GAP_M = 4.0               # along-footway gap between items on opposite sides
 SAME_SIDE_GAP_M = 1.2          # along-footway gap between items on the same side
@@ -149,7 +149,7 @@ def _tree(rng: np.random.Generator) -> _Made:
 
 _MAKERS = {"car": _car, "bikes": _bikes, "stall": _stall, "lamp": _lamp, "tree": _tree}
 # (min, max) of how far the item reaches into the corridor, measured from the corridor edge
-_INTRUSION = {"car": (0.3, 1.0), "bikes": (0.25, 1.0), "stall": (0.0, 0.6), "lamp": (0.1, 0.55), "tree": (0.1, 0.6)}
+_INTRUSION = {"car": (0.5, 1.2), "bikes": (0.4, 1.2), "stall": (0.2, 0.9), "lamp": (0.3, 0.9), "tree": (0.3, 1.0)}
 
 
 def _x_ranges(sc: Scenario) -> list[tuple[float, float]]:
@@ -220,3 +220,29 @@ def clear_lane_m(items: list[FurnitureItem], sc: Scenario | None = None, xs: np.
             cursor = max(cursor, hi)
         worst = min(worst, max(widest, CORRIDOR_HALF_WIDTH - cursor))
     return float(worst)
+
+
+def proxy_array(items) -> np.ndarray | None:
+    """``(N, 5)`` array of ``(x, y, yaw, hx, hy)`` for every collision proxy, or ``None`` without furniture."""
+    rows = [(x, y, yaw, hx, hy) for it in items for x, y, yaw, hx, hy, _ in it.world_boxes()]
+    return np.array(rows, dtype=float) if rows else None
+
+
+def footprint_gap(x: float, y: float, yaw: float, boxes: np.ndarray, half_l: float, half_w: float) -> np.ndarray:
+    """Signed gap [m] between an oriented rectangle (the rover's footprint) and each oriented box in ``boxes``.
+
+    Separating-axis test over the four edge normals: negative means the rectangles overlap (minus the smallest
+    penetration), positive is the largest separation along any axis, which is the exact distance for face-to-face
+    configurations and a slight underestimate for corner-to-corner ones. The sign is always exact.
+    """
+    c, s = math.cos(yaw), math.sin(yaw)
+    bx, by, byaw, bhx, bhy = boxes.T
+    cb, sb = np.cos(byaw), np.sin(byaw)
+    dx, dy = bx - x, by - y
+    gap = np.full(len(boxes), -np.inf)
+    for ax, ay in ((c + 0 * cb, s + 0 * cb), (-s + 0 * cb, c + 0 * cb), (cb, sb), (-sb, cb)):
+        centre = np.abs(dx * ax + dy * ay)
+        r_rover = half_l * np.abs(c * ax + s * ay) + half_w * np.abs(-s * ax + c * ay)
+        r_box = bhx * np.abs(cb * ax + sb * ay) + bhy * np.abs(-sb * ax + cb * ay)
+        gap = np.maximum(gap, centre - r_rover - r_box)
+    return gap
