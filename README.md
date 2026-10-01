@@ -180,7 +180,7 @@ The real Mumbai route geometry is in `data/osm`; crossing density is taken as an
 | [`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) | 17 silent MuJoCo pitfalls and platform notes, each with a regression test |
 | [`docs/RENDERING.md`](docs/RENDERING.md) | how the cinematic renderer works (PBR backend, recorded episodes, post-processing, the live view, the drone) and its MuJoCo quirks |
 | [`docs/RICH_WORLD.md`](docs/RICH_WORLD.md) | the opt-in collidable street (parked vehicles, stalls, lamps, trees) and a small paired evaluation in it; not comparable with `results/` |
-| [`HANDOFF.md`](HANDOFF.md) | state of the repository and a detailed plan for the remaining task: a collidable rich-world mode |
+| [`HANDOFF.md`](HANDOFF.md) | state of the repository, what to know before changing it, and open items |
 | [`docs/NMIMS_EXPORT.md`](docs/NMIMS_EXPORT.md) | generating the course-template folder from this repository |
 
 ## Engineering notes worth reading

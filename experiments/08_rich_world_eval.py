@@ -7,6 +7,7 @@ own files under ``results/rich_world/`` and ``docs/RICH_WORLD.md``.
 
     python experiments/08_rich_world_eval.py                        # 20 seeds x 3 families x 4 controllers + 8 seeds of MPPI, both worlds
     python experiments/08_rich_world_eval.py --n 5 --n-mppi 0       # a quick smoke run
+    python experiments/08_rich_world_eval.py --doc-only             # rewrite the document from the saved episodes
 """
 
 from __future__ import annotations
@@ -101,6 +102,17 @@ def write_doc(df: pd.DataFrame, s: pd.DataFrame, p: pd.DataFrame, args) -> None:
     pt = p.assign(safe_standard=p.safe_standard.map(pct), safe_rich=p.safe_rich.map(pct), change=(100 * p.change).map("{:+.0f} points".format),
                   mcnemar_p=p.mcnemar_p.map("{:.3f}".format))
     n_items = df[df.world == "rich"].drop_duplicates(["family", "seed"]).n_furniture
+    sig = p[p.mcnemar_p < 0.05]
+    pfmt = lambda v: "p < 0.001" if v < 0.0005 else f"p = {v:.3f}"          # noqa: E731
+    drops = ", ".join(f"{r.controller} ({100 * r.change:+.0f} points, {pfmt(r.mcnemar_p)})" for r in sig.itertuples())
+    noise = ", ".join(p[p.mcnemar_p >= 0.05].controller)
+    off = df.groupby(["controller", "world"]).apply(lambda g: int((g.outcome == "off_sidewalk").sum()), include_groups=False)
+    n_ppo = int((df.controller == "ppo").sum() // 2)
+    shows = (f"Safe delivery changed significantly (exact McNemar, p < 0.05) for {drops or 'no controller'}; "
+             f"for {noise or 'none of the controllers'} the change is within noise at this sample size. "
+             f"PPO's drop is mostly leaving the sidewalk: {off.get(('ppo', 'rich'), 0)} of {n_ppo} episodes end `off_sidewalk` in the rich world "
+             f"against {off.get(('ppo', 'standard'), 0)} in the standard one. The shielded pure-pursuit baseline, which never steers round anything, "
+             f"turns most of the extra failures into stalls in front of the furniture rather than collisions, which is what the safety filter is for.")
     text = f"""# Rich-world evaluation
 
 **Not comparable with `results/benchmark_standard.csv` or any number elsewhere in this repository.** This is a separate, small
@@ -142,6 +154,10 @@ other (off the sidewalk, rollover, timeout, shock over budget). Intervals are 95
 `lost_to_furniture` counts scenarios delivered safely in the standard world and not in the rich one; `gained` the opposite.
 `mcnemar_p` is the exact two-sided McNemar test on those pairs.
 
+## What it shows
+
+{shows}
+
 ## Reading it honestly
 
 * **PPO is out of distribution here.** It was trained without any of this furniture; its observation (lidar) shows the boxes but
@@ -170,8 +186,9 @@ def main() -> None:
     ap.add_argument("--n-mppi", type=int, default=8, help="seeds of MPPI per family (it is about 100x costlier)")
     ap.add_argument("--seed0", type=int, default=7000)
     ap.add_argument("--workers", type=int, default=None)
+    ap.add_argument("--doc-only", action="store_true", help="rewrite docs/RICH_WORLD.md and the summaries from results/rich_world/eval.csv")
     args = ap.parse_args()
-    df = run(args)
+    df = pd.read_csv(OUT / "eval.csv") if args.doc_only else run(args)
     OUT.mkdir(parents=True, exist_ok=True)
     s, p = summary(df), paired(df)
     df.to_csv(OUT / "eval.csv", index=False)

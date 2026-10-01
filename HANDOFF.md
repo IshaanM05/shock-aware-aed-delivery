@@ -1,7 +1,9 @@
-# Handoff: rich-world mode and drone visuals
+# Handoff: state of the repository
 
-This file is for whoever picks up the two next tasks. Read it top to bottom once; sections 1 to 3 are context,
-sections 4 and 5 are the tasks, section 6 is what "done" means.
+The two tasks the previous version of this file planned, the drone visuals with a rover-versus-drone shot and the opt-in
+rich-world mode with a truly live view, are done (2026-10-01). This file says what exists, what to know before touching it,
+and what could come next. Sections 1 to 3 are context, sections 4 and 5 describe the two pieces of work, section 6 is what
+"done" means, section 7 lists open items.
 
 ## 1. State of the repository (2026-10-01)
 
@@ -9,14 +11,14 @@ Public repo: https://github.com/IshaanM05/shock-aware-aed-delivery (branch `main
 
 | Area | State |
 |---|---|
-| Simulator (`src/aedrover/sim`) | Done. Compile-once MJCF world, mocap slots, 50 Hz control. Episodes are deterministic and independent of job order since the inertia fix (engineering note 15). |
-| Controllers (`nav`, `learning`, `control`) | Done: pure pursuit, potential field, dynamic window, MPPI, PPO, swept-footprint safety filter. PPO policy is committed in `models/ppo_selected`. |
-| Experiments and results | Done, but **computed before the inertia fix** (see section 2, item 1). |
-| Clinical and drone layers | Done (`clinical`, `drone`), numbers in `results/clinical*.csv` and `docs/DRONE_COMPARATOR.md`. |
-| Cinematic renderer (`src/aedrover/viz`) | Done: recorded episodes replayed through MuJoCo 3.14's PBR (Filament) renderer, including the AED drone and the rover-versus-drone dispatch shot. See `docs/RENDERING.md`. |
+| Simulator (`src/aedrover/sim`) | Done. Compile-once MJCF world, mocap slots, 50 Hz control. Episodes are deterministic and independent of job order since the inertia fix (engineering note 15). An opt-in rich world (`AEDRoverEnv(rich=True)`) adds collidable street furniture (section 4). |
+| Controllers (`nav`, `learning`, `control`) | Done: pure pursuit, potential field, dynamic window, MPPI, PPO, swept-footprint safety filter. PPO policy is committed in `models/ppo_selected`. MPPI plans in a world with the rich furniture when there is any. |
+| Experiments and results | Done, but **computed before the inertia fix** (section 2, item 1). `experiments/08_rich_world_eval.py` is a separate small study in the rich world (`results/rich_world/`, `docs/RICH_WORLD.md`), not comparable with `results/`. |
+| Clinical and drone layers | Done (`clinical`, `drone`), numbers in `results/clinical*.csv` and `docs/DRONE_COMPARATOR.md`. The clinical model times its drone more simply than the drone simulation (section 5). |
+| Cinematic renderer (`src/aedrover/viz`) | Done: recorded episodes replayed through MuJoCo 3.14's PBR (Filament) renderer, the AED drone, the rover-versus-drone dispatch shot, and a streaming path for live use. See `docs/RENDERING.md`. |
 | Media | `assets/showcase.mp4` (87 s, 1080p60, 27 MB), `assets/hero.gif`, `assets/showcase_poster.jpg`. Master (172 MB) is in `.cache/`, ignored. |
-| Live views | `scripts/live_cinematic.py` (dressed scene, plays back a freshly simulated episode in real time) and `scripts/live_viewer.py` (MuJoCo's plain viewer). |
-| Tests | About 300. `pytest -m "not slow and not gpu" -n auto` is the CI set; `gpu` tests run locally only. |
+| Live views | `scripts/live_cinematic.py` (the simulation and the dressed PBR renderer run together; `--rich`, `--replay`) and `scripts/live_viewer.py` (MuJoCo's plain viewer; `--rich`). |
+| Tests | About 320. `pytest -m "not slow and not gpu" -n auto` is the CI set; `gpu` tests run locally only. |
 | NMIMS export | `scripts/export_nmims.py` builds `dist/nmims/Group_03_Kashish_Vaishnavi` and passes the course audit. It has **not** been applied to the course repo. It predates the inertia fix and the new assets. |
 
 ## 2. Things to know before you start
@@ -25,88 +27,86 @@ Public repo: https://github.com/IshaanM05/shock-aware-aed-delivery (branch `main
    rescaled inertia in place, so individual episodes can differ from a fresh replay (same seed, different history).
    Each row is still a valid sample and conclusions are expected to hold, but that is unverified. Re-running
    (`python scripts/run_pipeline.py --force`, about 4.5 hours on a 24-core laptop, then `scripts/make_report.py`,
-   `scripts/make_osm_doc.py`, README numbers, `scripts/export_nmims.py`) would make every row reproducible. Ask the
-   project owner before doing it: it moves every published number slightly.
+   `scripts/make_osm_doc.py`, README numbers, `scripts/export_nmims.py`) would make every row reproducible. On 2026-10-01 the owner
+   chose to skip it for now. Ask before doing it: it moves every published number slightly.
 2. **Constraints that must hold.**
    * No mention of any AI assistant, its vendor, or co-author trailers in commits, PR text or repo files. Before pushing,
      read `git log --format=%B` and confirm no commit carries such a line.
    * Never commit to or push to the NMIMS course repo, and never `git add -A` there, without the owner's explicit go-ahead.
-   * The standard environment, its seeds and `results/` are the benchmark. New work must not change them (prove it
-     with a test, see section 6).
+   * The standard environment, its seeds and `results/` are the benchmark. New work must not change them;
+     `tests/test_benchmark_lock.py` hashes the default world XML and pins one standard episode.
    * Every number shown in media, README or docs comes from `results/` or from code, never typed by hand. Captions
      must claim only what the data supports (for example "one scenario, not a statistic").
    * NMIMS export rules: no currency tokens, no emoji, exactly six verified DOIs in the roster.
 3. **Environment.** Python 3.11 venv at `.venv` (`pip install -e ".[dev,viz,rl,geo]"`), MuJoCo 3.14, an NVIDIA GPU with
    OpenGL for the PBR renderer. Simulation and training are CPU-only. CI runners have no GPU.
-4. **Renderer quirks that cost hours** are all in `docs/RENDERING.md`. The ones most likely to bite again:
+4. **Platforms differ in contact dynamics** (engineering note 17). The same standard job gives 24.7 s on Windows and 23.3 s on Linux
+   and still reaches the goal. The lock test checks the exact reference on Windows only; do not expect benchmark rows to be bitwise
+   reproducible across operating systems.
+5. **Renderer quirks that cost hours** are all in `docs/RENDERING.md`. The ones most likely to bite again:
    * The depth material is shared between models; calibrate the depth decoder before any scene does a depth pass,
      or Filament aborts the whole process (handled in `FilamentBackend.__init__`).
    * `geom_rgba` and `geom_size` changes do not reach the renderer per frame; mocap poses and material colour or
-     emission do. Overlays are therefore pools of bead-spheres on mocap bodies.
+     emission do. Overlays are therefore pools of bead-spheres on mocap bodies, and the drone's status light is two parked-or-shown
+     spheres.
    * `ModelDecorations.update` cannot be called from Python.
    * Filament aborts at teardown if objects are destroyed out of order; scripts end with `os._exit(0)`. Run scripts
      with `python -u` so buffered output is not lost if the process aborts.
-5. **File sizes.** GitHub rejects files over 100 MB and warns over 50 MB. Keep the committed film near 25 MB
-   (`render_showcase.py` re-encodes the master at crf 28) and GIFs under about 5 MB.
-6. **Rendering cost** on the reference laptop: a finished 1080p frame costs 0.2 to 0.3 s all-in; the 68 s film takes
-   11 to 17 minutes. Recordings are cached under `.cache/recordings`.
+   * Small far objects (a 0.9 m drone beyond 50 to 100 m) fall out of the depth-based haze and turn into sky; keep the camera close.
+6. **File sizes.** GitHub rejects files over 100 MB and warns over 50 MB. Keep the committed film near 25 to 28 MB
+   (`render_showcase.py` re-encodes the master at crf 28) and GIFs under about 5 MB. The hero GIF and poster are cut by shot name,
+   so inserting shots does not move them; re-rendering does not change them either, so do not recommit them.
+7. **Rendering cost** on the reference laptop: a finished 1080p frame costs 0.2 to 0.3 s all-in; the 87 s film takes about 15 minutes.
+   Recordings are cached under `.cache/recordings`.
+8. **Shell quirk** when scripting edits: very long heredocs that mix many quote styles can be rejected by the tool wrapper; write such
+   files with an editor tool instead.
 
 ## 3. Architecture in one page
 
 * `World` (`sim/world.py`): one MJCF compiled once; kerb slabs, ramps, obstacles and pedestrians are mocap bodies with
-  fixed compile-time sizes that are moved, never resized (engineering notes 1 to 4).
+  fixed compile-time sizes that are moved, never resized (engineering notes 1 to 4). Obstacle slots are compiled non-colliding
+  (note 16). `build_xml_rich` / `World(furniture=...)` add static furniture proxies; without furniture the XML is the default, byte for byte.
 * `AEDRoverEnv` (`sim/env.py`): steps the rover, pedestrians (social force), perception (lidar by `mj_multiRay`
   over the geom groups in `sim/sensors.py`) and metrics. Collision and outcome detection use an analytic clearance to
-  pedestrians and the scenario's obstacle list (`_clearance`, `_check_done`), not MuJoCo contacts.
-* `viz`: `recording.py` (record an episode), `render_model.py` (dressed copy of the physics MJCF, replay, backends),
+  pedestrians, the scenario's obstacle list and, in rich mode, the furniture boxes (`_clearance`, `_check_done`).
+* `sim/furniture.py`: `place_furniture(scenario)` (pure, own random stream, feasibility by construction), `FurnitureItem`,
+  `footprint_gap` (rover footprint versus boxes), `cover_discs` (for MPPI).
+* `viz`: `recording.py` (record an episode), `render_model.py` (dressed copy of the physics MJCF, replay, `set_live`, backends),
   `dressing.py` / `people.py` / `rover_visuals.py` / `overlays.py` (visual-only content and animators),
+  `drone_recording.py` / `drone_visuals.py` / `dispatch.py` (the drone and the dispatch shot), `live.py` (streaming path),
   `post.py` (haze, depth of field, bloom, grade), `film.py` / `shots.py` / `hud.py` (cinematography).
   The render model adds visual-only geoms after every physics element, so all indices stay valid.
 
-## 4. Task A: rich-world mode (collidable street, truly live)
+## 4. Rich-world mode and the live view (done 2026-10-01)
 
-**Goal.** An opt-in mode in which parked vehicles and motorbikes, stalls, lamp posts and tree trunks are real
-obstacles, and a live run steps the simulation and the renderer together, with the dressed look. The user wants to be
-able to launch a live MuJoCo demo at any time and see the rendered world, with the dressing physically affecting the
-run. It must never change the standard benchmark.
+**What exists.** `AEDRoverEnv(rich=True)` compiles each scenario's street furniture into the physics: parked cars, rows of motorbikes, stalls, lamp
+posts and tree trunks as static collision boxes from the road up. The lidar sees them, the clearance and outcome count them
+(`collision_kind = "furniture"`), MPPI plans in a world with the same boxes, pedestrians walk round them, and the dressing draws every
+item exactly on its boxes (`Recording.meta["furniture"]`). `scripts/live_cinematic.py` steps the simulation and draws it together with
+no pre-simulation pass (`--rich` for the street furniture, `--replay` for the old behaviour). Details are in `docs/RENDERING.md`; the
+paired evaluation is in `docs/RICH_WORLD.md`.
 
-**Design decisions to make (recommendations in brackets).**
-1. *Where the obstacles live.* Street furniture positions depend only on the scenario seed, so [compile a per-scenario
-   model with the furniture as static collidable geoms] instead of mocap slots; the compile-once rule exists for the
-   benchmark's speed and is not needed here. Keep it behind a new flag (for example `AEDRoverEnv(rich=True)` building
-   its MJCF via a separate builder) and leave `build_xml` output for the default world byte-identical.
-2. *Keep the corridor feasible.* The lateral corridor limit is `CORRIDOR_HALF_WIDTH = 1.4 m` (`sim/scenario.py`). Place
-   furniture outside it, or leave a guaranteed clear path, or scenarios become unsolvable. Decide whether some items
-   (a parked bike, a stall) may intrude and require the planner to route around them.
-3. *Outcome and clearance.* `_clearance` and `_check_done` ignore anything not in `crowd` or `scenario.obstacles`. Extend them
-   to cover the rich obstacles (analytic boxes or cylinders are enough), or detect collisions from `data.contact`.
-   Without this the rover will stall against a bike and be reported as a "stall", not a collision.
-4. *Perception.* Lidar already sees every collidable geom in the groups it masks (`_GROUP_MASK` in `sim/sensors.py`), so
-   the new obstacles are visible to the safety filter, DWA, APF and PPO observations. Check the PPO policy still behaves
-   (it was trained without them; expect degraded results and report them honestly as out of distribution).
-5. *MPPI's internal model.* MPPI plans on its own `World` copy (`nav/mppi.py`, `_pw`) that knows the scenario's
-   obstacles only. Either build it with the same rich geometry or document that MPPI is blind to furniture in this mode.
-6. *Live stepping.* `RenderScene` takes a whole `Recording`. For live use, add a streaming path:
-   * copy `data.qpos` and mocap arrays from the live env into the render model each frame (same indices as today);
-   * make `PedAnimator` streaming: heading from a causal low-pass of velocity, stride phase accumulated as you go,
-     instead of arrays precomputed from the full episode;
-   * the "actual upcoming path" ribbon needs the future; for live use draw the controller's plan instead (MPPI rollouts
-     via `ctrl.capture`, DWA's chosen arc) or drop it.
-7. *Window.* `scripts/live_cinematic.py` shows frames in a Tk window at about 15 to 20 fps without haze or bloom.
-   A streaming version can reuse it; consider running the simulation in a thread so the GPU and the CPU overlap.
+**Decisions and why.**
 
-**Suggested order.** (a) rich MJCF builder and a scenario-to-furniture placement function, with tests that nothing is
-inside the corridor; (b) extend clearance and outcome detection; (c) a rich variant of the dressing that shares the same
-geometry (so what you see is what collides, one source of truth for furniture placement); (d) streaming render path;
-(e) `scripts/live_cinematic.py --rich` and README and `docs/RENDERING.md` updates; (f) a small rich-world evaluation, clearly
-labelled as not comparable with `results/`.
+* Per-scenario compile, not mocap pools: arbitrary box sizes, and the compile cost (about 14 ms) is irrelevant outside the benchmark.
+  `env.world`, `env.rover` and `env.perc` are therefore rebuilt in `reset` when the street changes; anything that held them across a
+  reset (a viewer) must read them again. `live_viewer.py --rich` opens a window per episode for this reason.
+* Furniture may encroach on the footway by at most 1.2 m, so a 1.6 m lane always stays free; opposite-side items keep 4 m apart; nothing in the
+  start zone, goal zone or road crossing, or within 3 m of a scenario bollard. `tests/test_furniture.py` checks this over 200 scenarios. The
+  dressing's own random stream is entangled with the film, so the rich placement has its own function and stream and the standard dressing
+  is untouched (hash-tested).
+* Collision proxies reach from the road up, because a lidar at 0.33 m misses a motorbike frame and a box with its underside above the road
+  made the rover climb and bounce.
+* The analytic footprint matches the physical contact to about 1 cm (`test_driving_into_furniture_ends_in_a_furniture_collision_at_the_moment_of_contact`).
+* Live rendering has no future, so the recorded "path ahead" ribbon is not drawn live; MPPI's sampled rollouts are.
 
-**Acceptance.** See section 6, plus: the rover is physically stopped by a parked car; lidar returns hit it; the episode
-outcome reports a collision when expected; the live window runs a full episode without a pre-simulation pass.
+**Limits.** Nothing moves or falls over; PPO is out of distribution in this world
+(it never saw furniture) and `docs/RICH_WORLD.md` says so; MPPI cannot hold real time and the live HUD shows its speed factor; there is no worker
+thread (the simulation costs about 20 ms per simulated second except for MPPI, so it did not seem to be needed).
 
-## 5. Task B: drone visuals and a rover-vs-drone shot (done 2026-10-01)
+## 5. Drone visuals and the rover-versus-drone shot (done 2026-10-01)
 
-**What exists now.**
+**What exists.**
 
 * `drone/mission.py`: `simulate_mission(..., trace=[])` appends `(t, pos, quat, rotor thrusts)` per control tick; with
   `trace=None` nothing changes.
@@ -131,22 +131,24 @@ outcome reports a collision when expected; the live window runs a full episode w
   timing in the clinical model gives 28.5% instead of 29.7% at 1 km (`docs/DRONE_COMPARATOR.md`, section 9). The README sentence that
   attributed the 60 s latency to the published numbers was corrected.
 
-**Ideas not done.** A 500 m variant (one parameter), wind and gusts in the recorded flight, an ambulance marker on the timeline, a visual
-payload lowering after release (the simulation treats release as an event, so it was left out rather than invented).
+## 6. Definition of done for any further work
 
-## 6. Definition of done for either task
-
-* `pytest -m "not slow and not gpu" -n auto` passes; GPU tests pass locally (`pytest -m gpu`); `ruff check .` is clean.
-* **Benchmark untouched:** a test that runs one standard job (for example dynamic window, mixed family, seed 5010 at a 2.0 m/s cap) and
-  asserts outcome, time and peak shock equal fixed reference values, so any accidental change to the default world fails it.
+* `pytest -m "not slow and not gpu" -n auto` passes; GPU tests pass locally (`pytest -m gpu`); `ruff check src tests scripts experiments` is clean.
+* **Benchmark untouched:** `tests/test_benchmark_lock.py` passes (default world XML hash; the exact reference episode on Windows).
 * New code lives in its own modules or behind flags; the default `build_xml` and `AEDRoverEnv` behaviour is unchanged.
 * Docs updated (`docs/RENDERING.md`, README quick start, this file's status), and every claim in captions traceable to a file.
 * Commits are small, plain-language, with no assistant or co-author attribution; push to `main`; check the GitHub Actions run
-  afterwards (`gh run list`), because the hosted runners have no GPU.
+  afterwards (`gh run list`), because the hosted runners have no GPU and run Linux.
 * Media stays under the size limits in section 2.
 
-## 7. Suggested sequencing
+## 7. Open items and ideas
 
-1. Decide about the pipeline re-run (section 2, item 1) and, if yes, start it first; it is CPU-only and runs unattended.
-2. Task B first (smaller, self-contained, extends the film). Task A second (touches simulator-adjacent code, needs the most care).
-3. While the pipeline runs, GPU work (rendering) can proceed, but expect slower frames because both compete for the CPU.
+1. The pipeline re-run (section 2, item 1), then `make_report.py`, `make_osm_doc.py`, the README numbers and the NMIMS export. The NMIMS
+   export also predates the new assets and the drone and rich-world code.
+2. Make the clinical model use the simulated drone timing, or state the gap wherever the 29.7% appears (it is in the README and the
+   DRONE_COMPARATOR document now).
+3. Film: a 500 m variant of the dispatch section (one parameter), wind and gusts in the recorded flight, an ambulance marker on the timeline.
+4. Rich world: a worker thread so the GPU and the CPU overlap for MPPI; a harder layout level (a real chicane) for planners; furniture that
+   moves.
+5. Obstacle slots are analytic-only (note 16); whether bollards and planters should be physical would change every benchmark episode, so it
+   is a decision for the owner together with the re-run.
