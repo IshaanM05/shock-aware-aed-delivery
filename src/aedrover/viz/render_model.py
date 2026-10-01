@@ -185,6 +185,24 @@ class RenderScene:
         mujoco.mj_kinematics(self.model, self.data)
         mujoco.mj_camlight(self.model, self.data)
 
+    def set_live(self, qpos: np.ndarray, mocap_pos: np.ndarray, mocap_quat: np.ndarray, live=None) -> None:
+        """Put the model in a state that is being simulated right now (no recording, no interpolation).
+
+        The physics model's degrees of freedom and mocap slots keep their indices in the render model, so the live arrays are
+        copied straight across. Animators that have ``apply_live`` (the streaming ones in ``viz.live``) get ``live``; the
+        others (the drone, which only needs its own clock) are applied as usual.
+        """
+        self.data.qpos[:] = qpos
+        self.data.mocap_pos[: self._n_mocap] = mocap_pos[: self._n_mocap]
+        self.data.mocap_quat[: self._n_mocap] = mocap_quat[: self._n_mocap]
+        for a in self.animators:
+            if hasattr(a, "apply_live"):
+                a.apply_live(self.data, live)
+            else:
+                a.apply(self.data, 0.0)
+        mujoco.mj_kinematics(self.model, self.data)
+        mujoco.mj_camlight(self.model, self.data)
+
     def rover_pose(self, s: float) -> tuple[np.ndarray, float]:
         """Chassis position and yaw at fractional step ``s``."""
         q, _, _ = interpolate_state(self.rec, s, self._quat_slices)

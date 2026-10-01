@@ -165,7 +165,9 @@ class OverlayAnimator:
         self._put("rib", pts)
 
     def _lidar(self, pos: np.ndarray, yaw: float, i0: int) -> None:
-        rng_m = self.rec.lidar[i0]
+        self._lidar_ranges(pos, yaw, self.rec.lidar[i0])
+
+    def _lidar_ranges(self, pos: np.ndarray, yaw: float, rng_m: np.ndarray) -> None:
         ang = yaw + self.rec.lidar_angles
         hit = rng_m < self._lidar_range - 1e-3
         r_show = np.where(hit, rng_m, self.cfg.lidar_show_radius)
@@ -185,7 +187,9 @@ class OverlayAnimator:
             self._park("roll")
             self._park("best")
             return
-        r = self.rec.rollouts[int(self._roll_keys[k])]
+        self._put_rollouts(self.rec.rollouts[int(self._roll_keys[k])])
+
+    def _put_rollouts(self, r: dict) -> None:
         xy = _densify(r["xy"])                                # (K, 2H+1, 2)
         z = self._surface(xy[..., 0]) + 0.04
         self._put("roll", np.concatenate([xy, z[..., None]], -1).reshape(-1, 3))
@@ -193,7 +197,9 @@ class OverlayAnimator:
         self._put("best", np.stack([b[:, 0], b[:, 1], self._surface(b[:, 0]) + 0.06], -1))
 
     def _halo(self, pos: np.ndarray, yaw: float, i0: int, s: float) -> None:
-        frac = float(self._shock[i0]) / self._budget
+        self._halo_at(pos, yaw, float(self._shock[i0]) / self._budget, s)
+
+    def _halo_at(self, pos: np.ndarray, yaw: float, frac: float, s: float) -> None:
         level = 0 if frac < 0.45 else (1 if frac < 0.8 else 2)
         n = self.cfg.halo_beads
         t = np.arange(n) / n * 2 * math.pi
