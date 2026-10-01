@@ -13,10 +13,11 @@ import math
 
 import numpy as np
 
+from ..sim.furniture import FurnitureItem
 from . import assets as A
 from .look import Look
 from .recording import Recording
-from .render_model import RenderXml, _pbr_material
+from .render_model import RenderXml, _pbr_material, hide_physics_geoms
 
 PAVE_HALF_Y = 5.0          # the widened pavement reaches this lateral distance on each side
 BUILDING_FRONT_Y = 5.0     # building fronts stand on the pavement edge
@@ -78,12 +79,16 @@ def _scenario(rec: Recording) -> dict:
     return sc
 
 
-def dress_scene(rx: RenderXml, rec: Recording, look: Look, overlays=None, drone=None, clear_flight_corridor=None) -> list:
+def dress_scene(rx: RenderXml, rec: Recording, look: Look, overlays=None, drone=None, clear_flight_corridor=None,
+                furniture=None) -> list:
     """Add the full street dressing to ``rx`` for the recorded scenario; returns the per-frame animators.
 
     ``drone`` (a ``drone_visuals.DroneSpec``) adds the AED quadrotor after everything else, so the rest of the scene is
     unchanged. ``clear_flight_corridor = (start_xy, end_xy, margin_m)`` leaves out the distant towers that the drone's
     flight line would pass through; the random stream is consumed identically, so nothing else moves.
+
+    Rich-world furniture (``sim.furniture``) is drawn on top of the usual street, exactly where its collision proxies are,
+    from ``furniture`` or from ``rec.meta["furniture"]``; a recording without any is dressed as before.
     """
     sc = _scenario(rec)
     mats = Materials(rx)
@@ -103,6 +108,9 @@ def dress_scene(rx: RenderXml, rec: Recording, look: Look, overlays=None, drone=
         _road_paint(rx, sc, mats)
         _parked_cars(rx, sc, rng, mats)
     _skyline(rx, sc, rng, mats, avoid=clear_flight_corridor)
+    items = [FurnitureItem.from_dict(d) for d in rec.meta.get("furniture", [])] if furniture is None else list(furniture)
+    if items:
+        _rich_furniture(rx, items, mats)
     from ..sim.vehicle_mjcf import VehicleParams
     from .people import dress_obstacles, dress_people
     from .rover_visuals import dress_rover
@@ -250,14 +258,14 @@ def _facade_details(rx: RenderXml, placed: list[dict], rng: np.random.Generator,
                 rx.world_xml.append(geom("cylinder", (tx, ty, h + 0.84), (0.62, 0.6), tank))
 
 
-def _motorbike(rx: RenderXml, x: float, y: float, yaw_deg: float, colour, mats: Materials, tag: str) -> None:
+def _motorbike(rx: RenderXml, x: float, y: float, yaw_deg: float, colour, mats: Materials, tag: str, z0: float = 0.0) -> None:
     body = mats(f"bike_{tag}", (*colour, 1.0), metallic=0.4, roughness=0.4)
     dark = mats("bike_dark", (0.05, 0.05, 0.055), roughness=0.7)
     chrome = mats("bike_chrome", (0.78, 0.79, 0.82), metallic=1.0, roughness=0.2)
     c, s = math.cos(math.radians(yaw_deg)), math.sin(math.radians(yaw_deg))
 
     def at(lx: float, ly: float, lz: float) -> tuple[float, float, float]:
-        return (x + c * lx - s * ly, y + s * lx + c * ly, lz)
+        return (x + c * lx - s * ly, y + s * lx + c * ly, lz + z0)
 
     q = (math.cos(math.radians(yaw_deg) / 2), 0.0, 0.0, math.sin(math.radians(yaw_deg) / 2))
     parts = [("box", at(0.0, 0, 0.55), (0.42, 0.11, 0.10), body), ("box", at(-0.16, 0, 0.72), (0.30, 0.10, 0.045), dark),
@@ -352,7 +360,7 @@ def _road_paint(rx: RenderXml, sc: dict, mats: Materials) -> None:
         rx.world_xml.append(geom("box", (xc, y, z), ((x1 - x0) / 2 - 0.4, 0.12, 0.003), white))
 
 
-def _car(rx: RenderXml, x: float, y: float, yaw_deg: float, colour, mats: Materials, tag: str) -> None:
+def _car(rx: RenderXml, x: float, y: float, yaw_deg: float, colour, mats: Materials, tag: str, z0: float = 0.0) -> None:
     body = mats(f"car_{tag}", (*colour, 1.0), metallic=0.55, roughness=0.32, reflectance=0.0)
     glass = mats("car_glass", (0.03, 0.05, 0.08), roughness=0.05)
     tyre = mats("car_tyre", (0.03, 0.03, 0.035), roughness=0.85)
@@ -361,7 +369,7 @@ def _car(rx: RenderXml, x: float, y: float, yaw_deg: float, colour, mats: Materi
     c, s = math.cos(math.radians(yaw_deg)), math.sin(math.radians(yaw_deg))
 
     def at(lx: float, ly: float, lz: float) -> tuple[float, float, float]:
-        return (x + c * lx - s * ly, y + s * lx + c * ly, lz)
+        return (x + c * lx - s * ly, y + s * lx + c * ly, lz + z0)
 
     q = (math.cos(math.radians(yaw_deg) / 2), 0.0, 0.0, math.sin(math.radians(yaw_deg) / 2))
     parts = [("box", at(0, 0, 0.62), (2.15, 0.88, 0.36), body), ("box", at(-0.15, 0, 1.08), (1.15, 0.80, 0.30), glass),
@@ -419,3 +427,66 @@ def _segment_distance(p, a, b) -> float:
     ab = b - a
     t = float(np.clip((p - a) @ ab / max(float(ab @ ab), 1e-12), 0.0, 1.0))
     return float(np.linalg.norm(p - (a + t * ab)))
+
+
+# ------------------------------------------------------------------------------- rich-world furniture
+BIKE_COLOURS = ((0.75, 0.10, 0.10), (0.12, 0.25, 0.55), (0.85, 0.85, 0.82), (0.15, 0.15, 0.17), (0.80, 0.55, 0.10))
+
+
+def _rich_furniture(rx: RenderXml, items: list[FurnitureItem], mats: Materials) -> None:
+    """Draw every collidable item where its collision proxies are, and hide the proxies (they are physics, not looks)."""
+    hide_physics_geoms(rx, {f"fur{i}_{k}": 3 for i, it in enumerate(items) for k in range(len(it.boxes))})
+    for i, it in enumerate(items):
+        z0 = it.z_base
+        if it.kind == "car":
+            _car(rx, it.x, it.y, math.degrees(it.yaw), CAR_COLOURS[it.variant % len(CAR_COLOURS)], mats, f"f{i}", z0)
+        elif it.kind == "bikes":
+            for j in range(it.count):              # a row of bikes parked head-in, 0.6 m apart along the footway
+                bx = it.x + (j - (it.count - 1) / 2) * 0.6
+                _motorbike(rx, bx, it.y, math.degrees(it.yaw) + (0.0 if (it.variant + j) % 2 == 0 else 180.0),
+                           BIKE_COLOURS[(it.variant + j) % len(BIKE_COLOURS)], mats, f"f{i}_{j}", z0)
+        elif it.kind == "stall":
+            _stall(rx, it, mats)
+        elif it.kind == "lamp":
+            _lamp(rx, it, mats)
+        elif it.kind == "tree":
+            _tree(rx, it, mats)
+        else:
+            raise ValueError(f"unknown furniture kind {it.kind!r}")
+
+
+def _stall(rx: RenderXml, it: FurnitureItem, mats: Materials) -> None:
+    cart = mats("stall_cart", (0.55, 0.30, 0.14), roughness=0.85)
+    pole = mats("stall_pole", (0.6, 0.6, 0.62), metallic=0.8, roughness=0.4)
+    umb = mats(f"umbrella_{it.variant % 4}", (*((0.9, 0.25, 0.12), (0.15, 0.55, 0.3), (0.95, 0.75, 0.1), (0.2, 0.35, 0.75))[it.variant % 4], 1.0),
+               roughness=0.9)
+    x, y, z0 = it.x, it.y, it.z_base
+    rx.world_xml += [geom("box", (x, y, z0 + 0.45), (0.7, 0.4, 0.45), cart), geom("cylinder", (x, y, z0 + 1.4), (0.02, 1.0), pole),
+                     geom("cylinder", (x, y, z0 + 2.35), (1.15, 0.03), umb)]
+
+
+def _lamp(rx: RenderXml, it: FurnitureItem, mats: Materials) -> None:
+    metal = mats("lamp_metal", (0.10, 0.11, 0.12), metallic=0.8, roughness=0.45)
+    bulb = mats("lamp_bulb", (1.0, 0.78, 0.45), roughness=0.4, emission=8.0)
+    side = 1.0 if it.y >= 0 else -1.0
+    x, y, z0 = it.x, it.y, it.z_base
+    rx.world_xml += [geom("cylinder", (x, y, z0 + 3.2), (0.06, 3.2), metal),
+                     geom("box", (x, y - side * 0.7, z0 + 6.3), (0.05, 0.75, 0.05), metal),
+                     geom("box", (x, y - side * 1.4, z0 + 6.22), (0.32, 0.14, 0.05), metal),
+                     geom("sphere", (x, y - side * 1.4, z0 + 6.12), (0.2,), bulb)]
+    rx.world_xml.append(f'<light type="point" pos="{_v(x, y - side * 1.4, z0 + 6.0)}" diffuse="1 0.72 0.42" '
+                        f'intensity="900000" castshadow="false"/>')
+
+
+def _tree(rx: RenderXml, it: FurnitureItem, mats: Materials) -> None:
+    trunk = mats("trunk", (0.26, 0.17, 0.10), roughness=0.95)
+    pot = mats("planter_pot", (0.45, 0.42, 0.38), roughness=0.9)
+    leaves = [mats(f"leaf_{k}", c, roughness=0.9) for k, c in enumerate(((0.10, 0.27, 0.08), (0.14, 0.33, 0.10), (0.08, 0.22, 0.09)))]
+    rng = np.random.default_rng([it.variant, int(round(it.x * 100)), 7])        # the item's own stream: nothing else shifts
+    x, y, z0, th = it.x, it.y, it.z_base, 3.0                                   # the trunk is as tall as its collision proxy
+    rx.world_xml += [geom("cylinder", (x, y, z0 + th / 2), (0.14, th / 2), trunk), geom("cylinder", (x, y, z0 + 0.22), (0.4, 0.22), pot)]
+    for _ in range(int(rng.integers(4, 7))):
+        off = rng.normal(0, 0.55, size=2)
+        r = float(rng.uniform(0.9, 1.45))
+        rx.world_xml.append(geom("ellipsoid", (x + off[0], y + off[1], z0 + th + float(rng.uniform(0.3, 1.6))), (r, r, r * 0.85),
+                                 leaves[int(rng.integers(len(leaves)))]))

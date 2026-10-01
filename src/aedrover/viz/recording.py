@@ -79,18 +79,25 @@ def _tuned_mppi() -> dict:
 def record_episode(controller: str, family: str, seed: int, *, vehicle: str = "optimized",
                    speed_cap: float | None = 2.0, ppo_path: str = "models/ppo_selected", shield: bool = True,
                    max_time: float = 90.0, controller_kwargs: dict | None = None, capture_rollouts: bool = False,
-                   scenario_kwargs: dict | None = None) -> Recording:
-    """Run one episode exactly like the benchmark (same env, controller settings, safety filter) and record it."""
+                   scenario_kwargs: dict | None = None, rich: bool = False, furniture=None) -> Recording:
+    """Run one episode exactly like the benchmark (same env, controller settings, safety filter) and record it.
+
+    ``rich`` turns on the rich-world mode (collidable street furniture, ``sim.furniture``), ``furniture`` supplies an explicit
+    list instead of the generated one; the items are stored in ``meta["furniture"]`` so the dressing can draw them.
+    """
     extra = dict(controller_kwargs or {})
     if controller == "ppo":
         extra.setdefault("path", str((REPO / ppo_path) if not Path(ppo_path).is_absolute() else ppo_path))
     elif controller == "mppi":
         extra = {**_tuned_mppi(), **extra}
     name, kw = controller_spec(controller, speed_cap, **extra)
-    env = AEDRoverEnv(obs_mode="dict", veh=VehicleParams.by_name(vehicle), max_time=max_time)
+    env = AEDRoverEnv(obs_mode="dict", veh=VehicleParams.by_name(vehicle), max_time=max_time, rich=rich)
     ctrl = make_controller(name, **kw)
     sf = SafetyFilter() if shield else None
-    env.reset(seed=seed, options={"family": family, "scenario_kwargs": dict(scenario_kwargs or {})})
+    options = {"family": family, "scenario_kwargs": dict(scenario_kwargs or {})}
+    if furniture is not None:
+        options["furniture"] = list(furniture)
+    env.reset(seed=seed, options=options)
     ctrl.reset(env)
     if sf is not None:
         sf.reset()
@@ -127,6 +134,8 @@ def record_episode(controller: str, family: str, seed: int, *, vehicle: str = "o
     meta = {"controller": controller, "family": family, "seed": seed, "vehicle": vehicle, "speed_cap": speed_cap,
             "outcome": ep["outcome"], "time_s": ep["time_s"], "peak_shock_g": ep["peak_shock_g"],
             "scenario": env.scenario.to_dict(), "lidar_range": float(env.perc.s.lidar_range), "budget_g": env.budget_g}
+    if env.furniture:
+        meta["furniture"] = [it.to_dict() for it in env.furniture]
     rec = Recording(xml=env.world.xml, dt=env.dt, t=np.array(T), qpos=np.array(Q), mocap_pos=np.array(MP),
                     mocap_quat=np.array(MQ), shock_g=np.array(SH), cmd=np.array(CM), lidar=np.array(LD),
                     lidar_angles=np.asarray(env.obs["lidar_angles"], dtype=np.float32), meta=meta,

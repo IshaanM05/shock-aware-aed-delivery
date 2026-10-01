@@ -120,10 +120,14 @@ class AEDRoverEnv(gym.Env):
         return self._obs_out(), {"scenario": sc.to_dict()}
 
     def _configure_world(self, sc: Scenario, furniture=None) -> None:
-        if self.rich or furniture is not None:
-            items = tuple(furniture) if furniture is not None else tuple(place_furniture(sc, density=self.rich_density))
-            if items != self.furniture:
-                self._rebuild_world(items)
+        if furniture is not None:                    # an explicit list (tests, demos) wins over the generated one
+            items = tuple(furniture)
+        elif self.rich:
+            items = tuple(place_furniture(sc, density=self.rich_density))
+        else:
+            items = ()
+        if items != self.furniture:                  # only a changed street needs a new model; the benchmark world never does
+            self._rebuild_world(items)
         self.world.apply_scenario(sc)
 
     def _rebuild_world(self, items: tuple) -> None:
