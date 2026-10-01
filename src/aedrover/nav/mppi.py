@@ -29,6 +29,7 @@ import mujoco
 import numpy as np
 from mujoco import rollout
 
+from ..sim.furniture import cover_discs
 from ..sim.pedestrians import PED_R, ROBOT_HALF_L, ROBOT_HALF_W
 from ..sim.scenario import Scenario
 from ..sim.vehicle_mjcf import G, VehicleParams
@@ -81,8 +82,8 @@ class MPPIController:
         self.last: dict = {}
 
     # ---------------------------------------------------------------- setup
-    def _build(self, veh: VehicleParams, spec) -> None:
-        self._pw = World(veh, spec)
+    def _build(self, veh: VehicleParams, spec, furniture: tuple = ()) -> None:
+        self._pw = World(veh, spec, furniture=furniture)    # rich-world furniture is physical in the planner's model too
         self.model = self._pw.model
         self.model.opt.timestep = self.dt_phys
         self.datas = [mujoco.MjData(self.model) for _ in range(self.nthread)]
@@ -103,12 +104,13 @@ class MPPIController:
         self.L, self.W, self.r = veh.wheelbase, veh.track, veh.wheel_radius
         self._wx = np.array([self.L, self.L, 0.0, 0.0])
         self._wy = np.array([self.W / 2, -self.W / 2, self.W / 2, -self.W / 2])
-        self._veh_key = (veh, spec)
+        self._veh_key = (veh, spec, furniture)
 
     def reset(self, env) -> None:
-        key = (env.veh0, env.world.spec)
+        furniture = tuple(getattr(env, "furniture", ()))
+        key = (env.veh0, env.world.spec, furniture)
         if self._veh_key != key:
-            self._build(env.veh0, env.world.spec)
+            self._build(env.veh0, env.world.spec, furniture)
         sc: Scenario = env.scenario
         self.env, self.sc = env, sc
         pw = self._pw
@@ -121,6 +123,8 @@ class MPPIController:
         self._mpos = pw._mpos.copy()
         self._mquat = pw._mquat.copy()
         self._obs_pts = np.array([[ob.x, ob.y, OBS_SIZES[ob.slot % 2][0]] for ob in sc.obstacles]).reshape(-1, 3)
+        if furniture:                                         # rich world: discs covering each proxy, same cost as bollards
+            self._obs_pts = np.vstack([self._obs_pts, cover_discs(furniture)])
         self.rng = np.random.default_rng(sc.seed + 104729)
         self.U = np.zeros((self.H, 2))
         self.U[:, 0] = 1.0

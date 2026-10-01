@@ -13,8 +13,9 @@ from aedrover.control import SafetyFilter
 from aedrover.nav import make_controller
 from aedrover.nav.base import run_episode
 from aedrover.sim import AEDRoverEnv, VehicleParams, World
-from aedrover.sim.furniture import Box, FurnitureItem, footprint_gap, place_furniture
+from aedrover.sim.furniture import Box, FurnitureItem, cover_discs, footprint_gap, place_furniture
 from aedrover.sim.rover import Rover
+from aedrover.sim.scenario import sample_scenario
 from aedrover.sim.sensors import Perception
 from aedrover.sim.world import build_xml, build_xml_rich
 
@@ -173,3 +174,61 @@ def test_a_clear_scenario_without_furniture_in_the_way_is_unaffected_by_rich_mod
                     options={"family": "flat_clear", "furniture": off_path})
     for k in ("outcome", "time_s", "peak_shock_g", "path_m"):
         assert a[k] == pytest.approx(b[k], abs=1e-9), k
+
+
+# ------------------------------------------------------------------------------------- MPPI
+def test_cover_discs_cover_every_proxy_without_overshooting_much():
+    rng = np.random.default_rng(0)
+    for sc in (sample_scenario(f, s) for f in ("flat_clear", "crowded") for s in range(5000, 5012)):
+        items = place_furniture(sc)
+        discs = cover_discs(items)
+        assert len(discs) >= len(items)
+        for x, y, yaw, hx, hy, _ in (b for it in items for b in it.world_boxes()):
+            local = rng.uniform(-1, 1, size=(200, 2)) * np.array([hx, hy])
+            c, s = np.cos(yaw), np.sin(yaw)
+            pts = np.stack([x + c * local[:, 0] - s * local[:, 1], y + s * local[:, 0] + c * local[:, 1]], axis=1)
+            d = np.hypot(pts[:, None, 0] - discs[None, :, 0], pts[:, None, 1] - discs[None, :, 1]) - discs[None, :, 2]
+            assert (d.min(axis=1) <= 1e-9).all()                                    # every point of the footprint is inside a disc
+        for x, y, r in discs:                                                      # and no disc is far bigger than what it covers
+            near = [b for it in items for b in it.world_boxes() if np.hypot(b[0] - x, b[1] - y) < 3.0]
+            assert r <= 1.2 * max(min(b[3], b[4]) for b in near) + 0.2 or r <= 0.25
+
+
+def test_mppi_plans_in_a_world_with_the_same_furniture_and_default_planning_is_unchanged():
+    ctrl = make_controller("mppi", K=4, H=4)
+    plain = AEDRoverEnv(veh=VEH, obs_mode="dict")
+    plain.reset(seed=5302, options={"family": "crowded"})
+    ctrl.reset(plain)
+    assert ctrl._veh_key[2] == () and len(ctrl._obs_pts) == len(plain.scenario.obstacles)
+    assert ctrl.model.ngeom == plain.world.model.ngeom
+
+    rich = AEDRoverEnv(veh=VEH, obs_mode="dict")
+    bike = FurnitureItem("bikes", 12.0, 0.8, np.pi / 2, 0.0, (Box(0.0, 0.0, 0.9, 0.3, 1.05),))
+    rich.reset(seed=5302, options={"family": "crowded", "furniture": [bike]})
+    ctrl.reset(rich)
+    assert ctrl.model.ngeom == rich.world.model.ngeom == plain.world.model.ngeom + 1       # the planner's model has the proxy
+    assert len(ctrl._obs_pts) > len(rich.scenario.obstacles)                                # and its cost has the covering discs
+    again = ctrl._pw
+    ctrl.reset(rich)
+    assert ctrl._pw is again                                                              # same furniture: no rebuild
+    rich.reset(seed=5302, options={"family": "crowded", "furniture": [bike, _car(24.0, 0.9)]})
+    ctrl.reset(rich)
+    assert ctrl._pw is not again and ctrl.model.ngeom == plain.world.model.ngeom + 2
+
+
+@pytest.mark.slow
+def test_mppi_steers_round_furniture_that_stops_pure_pursuit_and_never_touches_it():
+    stall = FurnitureItem("stall", 12.0, 0.6, 0.0, 0.0, (Box(0.0, 0.0, 0.6, 0.4, 0.9),))          # inner edge at y = 0.2: on the straight line
+    env = AEDRoverEnv(veh=VEH, obs_mode="dict")
+    blind, _, _ = _blind_run(env, 5303, [stall])
+    assert blind["outcome"] == "collision" and blind["collision_kind"] == "furniture"
+    ctrl = make_controller("mppi", K=48, H=14, nthread=2)
+    env.reset(seed=5303, options={"family": "flat_clear", "furniture": [stall]})
+    ctrl.reset(env)
+    for _ in range(3000):
+        v, d = ctrl.act(env.obs)
+        _, _, term, trunc, info = env.step(np.array([v, d]))
+        if term or trunc:
+            break
+    ep = info["episode"]
+    assert ep["outcome"] == "goal" and ep["min_clearance_m"] > 0

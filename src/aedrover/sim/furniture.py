@@ -246,3 +246,23 @@ def footprint_gap(x: float, y: float, yaw: float, boxes: np.ndarray, half_l: flo
         r_box = bhx * np.abs(cb * ax + sb * ay) + bhy * np.abs(-sb * ax + cb * ay)
         gap = np.maximum(gap, centre - r_rover - r_box)
     return gap
+
+
+def cover_discs(items) -> np.ndarray:
+    """``(M, 3)`` array of ``(x, y, radius)``: discs that together cover every collision proxy's footprint.
+
+    Planners that model obstacles as discs (MPPI's cost) use these. Discs sit on the box's long axis, spaced by half the
+    short side, with the radius that makes neighbours cover the strip, so they overshoot the box by about 12% of its short
+    half-width and never leave a gap.
+    """
+    out = []
+    for x, y, yaw, hx, hy, _ in (b for it in items for b in it.world_boxes()):
+        long_half, short_half = max(hx, hy), min(hx, hy)
+        spacing = max(short_half, 0.05)
+        n = max(int(math.ceil(2 * long_half / spacing)), 1)
+        radius = math.hypot(short_half, spacing / 2) if n > 1 else math.hypot(hx, hy)
+        along = np.linspace(-long_half + long_half / n, long_half - long_half / n, n) if n > 1 else np.zeros(1)
+        ux, uy = (math.cos(yaw), math.sin(yaw)) if hx >= hy else (-math.sin(yaw), math.cos(yaw))
+        for t in along:
+            out.append((x + ux * t, y + uy * t, radius))
+    return np.array(out, dtype=float).reshape(-1, 3)
